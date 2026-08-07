@@ -1,0 +1,46 @@
+---
+// Personal introduction and skills section
+const skills = [
+  "TypeScript",
+  "React",
+  "Node.js",
+  "Python",
+  "Astro",
+  "Tailwind CSS",
+  "Docker",
+  "PostgreSQL",
+];
+const bio = `I'm a full-stack developer and designer who enjoys building clean, 
+thoughtful interfaces and robust backend systems. I believe great software 
+comes from the intersection of engineering precision and aesthetic care.`;
+---
+
+<section class="section px-6 py-20">
+  <div class="mx-auto max-w-2xl">
+    <div class="flex flex-col gap-8">
+      <!-- Section label -->
+      <div class="flex items-center gap-3">
+        <span class="font-mono text-sm text-brand" aria-hidden="true">$ cat /about.txt</span>
+      </div>
+
+      <!-- Bio text -->
+      <p class="text-lg leading-relaxed text-ink sm:text-xl">
+        {bio.trim().replace(/\n\s+/g, ' ')}
+      </p>
+
+      <!-- Skills -->
+      <div class="flex flex-col gap-4">
+        <span class="font-mono text-xs text-ink-muted uppercase tracking-widest">Skills & Tools</span>
+        <div class="flex flex-wrap gap-2">
+          {skills.map((skill) => (
+            <span
+              class="inline-flex items-center rounded-md border border-border bg-surface px-3 py-1.5 font-mono text-xs text-ink transition-all duration-200 hover:border-brand hover:text-brand"
+            >
+              {skill}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

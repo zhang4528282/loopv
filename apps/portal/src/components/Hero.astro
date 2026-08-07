@@ -1,0 +1,137 @@
+---
+// Hero section with typewriter effect
+const name = "loopv";
+const taglines = [
+  "crafting digital experiences.",
+  "building for the open web.",
+  "where code meets design.",
+  "terminal-dwelling creator.",
+];
+const subtitle = "Developer · Designer · Tinkerer";
+---
+
+<section class="section relative flex min-h-screen flex-col items-center justify-center px-6 pb-20 pt-24 text-center">
+  <!-- Background radial glow -->
+  <div
+    class="pointer-events-none absolute top-1/3 left-1/2 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full"
+    style="background: radial-gradient(circle, rgba(108,92,231,0.06) 0%, transparent 70%);"
+    aria-hidden="true"
+  ></div>
+
+  <div class="relative z-10 flex flex-col items-center gap-6">
+    <!-- Name -->
+    <h1
+      class="animate-fade-in text-6xl font-extrabold tracking-tight sm:text-7xl md:text-8xl"
+      style="animation-delay: 0.1s; letter-spacing: -0.03em;"
+    >
+      <span class="text-ink">{name}</span>
+      <span class="text-brand">.</span>
+      <span class="text-ink-muted">net</span>
+    </h1>
+
+    <!-- Tagline with typewriter -->
+    <div
+      class="animate-fade-in-up flex items-center gap-1 text-xl text-ink-muted sm:text-2xl"
+      style="animation-delay: 0.4s;"
+    >
+      <span class="font-mono text-brand" aria-hidden="true">&gt;</span>
+      <span class="inline-flex items-center">
+        <span id="typewriter-text" class="inline-block"></span>
+        <span
+          id="typewriter-cursor"
+          class="ml-0.5 inline-block h-[1.1em] w-[2px] bg-brand animate-blink align-middle"
+          aria-hidden="true"
+        ></span>
+      </span>
+    </div>
+
+    <!-- Subtitle -->
+    <p
+      class="animate-fade-in-up max-w-md text-base text-ink-muted sm:text-lg"
+      style="animation-delay: 0.8s;"
+    >
+      {subtitle}
+    </p>
+  </div>
+
+  <!-- Scroll indicator -->
+  <div
+    class="animate-fade-in absolute bottom-8 left-1/2 -translate-x-1/2"
+    style="animation-delay: 1.2s;"
+  >
+    <div class="flex flex-col items-center gap-2 text-ink-muted">
+      <span class="font-mono text-xs tracking-widest uppercase">Scroll</span>
+      <div class="h-8 w-[1px] bg-border">
+        <div class="h-3 w-[1px] bg-brand animate-pulse"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  const taglines = [
+    "crafting digital experiences.",
+    "building for the open web.",
+    "where code meets design.",
+    "terminal-dwelling creator.",
+  ];
+
+  const textEl = document.getElementById('typewriter-text');
+  const cursorEl = document.getElementById('typewriter-cursor');
+
+  if (textEl && cursorEl) {
+    let phraseIndex = 0;
+    let charIndex = 0;
+    let isDeleting = false;
+    let isPaused = false;
+
+    const typeSpeed = 60;
+    const deleteSpeed = 30;
+    const pauseDuration = 2500;
+    const nextPhraseDelay = 600;
+
+    function type() {
+      const currentPhrase = taglines[phraseIndex];
+
+      if (isPaused) return;
+
+      if (!isDeleting) {
+        // Typing forward
+        charIndex++;
+        textEl.textContent = currentPhrase.substring(0, charIndex);
+
+        if (charIndex === currentPhrase.length) {
+          // Finished typing, pause
+          isPaused = true;
+          setTimeout(() => {
+            isPaused = false;
+            isDeleting = true;
+            tick();
+          }, pauseDuration);
+          return;
+        }
+      } else {
+        // Deleting
+        charIndex--;
+        textEl.textContent = currentPhrase.substring(0, charIndex);
+
+        if (charIndex === 0) {
+          isDeleting = false;
+          phraseIndex = (phraseIndex + 1) % taglines.length;
+          setTimeout(() => tick(), nextPhraseDelay);
+          return;
+        }
+      }
+
+      const speed = isDeleting ? deleteSpeed : typeSpeed;
+      setTimeout(tick, speed);
+    }
+
+    function tick() {
+      type();
+    }
+
+    // Initial delay before starting
+    setTimeout(tick, 800);
+  }
+</script>

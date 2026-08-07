@@ -1,0 +1,130 @@
+---
+// Simulated terminal window with command animation
+const terminalTitle = "guest@loopv — bash";
+---
+
+<div class="terminal-window w-full max-w-lg mx-auto animate-fade-in-up" style="animation-delay: 1.0s;">
+  <!-- Title bar -->
+  <div class="terminal-titlebar">
+    <div class="terminal-dot red"></div>
+    <div class="terminal-dot yellow"></div>
+    <div class="terminal-dot green"></div>
+    <span class="ml-3 font-mono text-xs text-ink-muted">{terminalTitle}</span>
+  </div>
+
+  <!-- Terminal body -->
+  <div class="terminal-body" id="terminal-body">
+    <!-- Lines will be injected by JS -->
+  </div>
+</div>
+
+<script>
+  const commands = [
+    { prompt: 'guest@loopv:~$', cmd: 'whoami', output: 'loopv', delay: 400 },
+    { prompt: 'guest@loopv:~$', cmd: 'cat /etc/motd', output: 'Welcome to loopv.net — a personal corner of the web.', delay: 600 },
+    { prompt: 'guest@loopv:~$', cmd: 'ssh chat@loopv.net', output: null, delay: 500 },
+    { prompt: 'guest@loopv:~$', cmd: '', output: 'Connecting to chat.loopv.net...', delay: 800 },
+    { prompt: 'guest@loopv:~$', cmd: '', output: 'Connection established. █', delay: 0 },
+  ];
+
+  const body = document.getElementById('terminal-body');
+  if (!body) throw new Error('Terminal body not found');
+
+  let currentLineEl: HTMLDivElement | null = null;
+
+  function createLine(): HTMLDivElement {
+    const line = document.createElement('div');
+    line.className = 'terminal-line';
+    body.appendChild(line);
+    return line;
+  }
+
+  function createPromptEl(text: string): HTMLSpanElement {
+    const span = document.createElement('span');
+    span.className = 'terminal-prompt';
+    span.textContent = text;
+    return span;
+  }
+
+  function createCmdEl(): HTMLSpanElement {
+    const span = document.createElement('span');
+    span.className = 'terminal-command';
+    return span;
+  }
+
+  function createOutputEl(text: string): HTMLSpanElement {
+    const span = document.createElement('span');
+    span.className = 'terminal-output';
+    span.textContent = text;
+    return span;
+  }
+
+  function createCursorEl(): HTMLSpanElement {
+    const span = document.createElement('span');
+    span.className = 'terminal-cursor';
+    return span;
+  }
+
+  function typeText(
+    el: HTMLSpanElement,
+    text: string,
+    speed: number = 50
+  ): Promise<void> {
+    return new Promise((resolve) => {
+      let i = 0;
+      const interval = setInterval(() => {
+        el.textContent += text[i];
+        i++;
+        if (i >= text.length) {
+          clearInterval(interval);
+          resolve();
+        }
+      }, speed);
+    });
+  }
+
+  async function runSequence() {
+    // Initial delay
+    await new Promise((r) => setTimeout(r, 600));
+
+    for (let idx = 0; idx < commands.length; idx++) {
+      const { prompt, cmd, output, delay } = commands[idx];
+
+      // Create prompt line
+      const line = createLine();
+      line.appendChild(createPromptEl(prompt + ' '));
+
+      if (cmd) {
+        // Type the command
+        const cmdEl = createCmdEl();
+        line.appendChild(cmdEl);
+        const cursor = createCursorEl();
+        line.appendChild(cursor);
+
+        await typeText(cmdEl, cmd, 60);
+        cursor.remove();
+
+        // After command, add a brief pause
+        await new Promise((r) => setTimeout(r, delay));
+      }
+
+      // Show output if any
+      if (output) {
+        const outLine = createLine();
+        outLine.appendChild(createOutputEl(output));
+
+        if (idx === commands.length - 1) {
+          // Last line: add blinking cursor at end
+          const cursor = createCursorEl();
+          outLine.appendChild(cursor);
+        }
+
+        if (delay > 0) {
+          await new Promise((r) => setTimeout(r, delay));
+        }
+      }
+    }
+  }
+
+  runSequence();
+</script>

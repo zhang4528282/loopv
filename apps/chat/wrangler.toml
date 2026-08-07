@@ -1,0 +1,31 @@
+name = "loopv-chat"
+main = "src/worker.ts"
+compatibility_date = "2025-08-01"
+
+# 静态资源目录
+[assets]
+directory = "./public"
+
+# Durable Object 声明
+[[durable_objects.bindings]]
+name = "CHAT_ROOM"
+class_name = "ChatRoom"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["ChatRoom"]
+
+# D1 数据库绑定
+[[d1_databases]]
+binding = "DB"
+database_name = "loopv-chat-db"
+database_id = ""
+
+# R2 存储桶绑定
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "loopv-chat-media"
+
+[vars]
+MAX_MESSAGES = "200"
+MAX_UPLOAD_SIZE = "52428800"

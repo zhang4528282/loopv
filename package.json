@@ -1,0 +1,15 @@
+{
+  "name": "loopv",
+  "private": true,
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "sharp", "workerd"]
+  },
+  "scripts": {
+    "dev:portal": "pnpm --filter @loopv/portal dev",
+    "dev:chat": "pnpm --filter @loopv/chat dev",
+    "build:portal": "pnpm --filter @loopv/portal build",
+    "build:chat": "pnpm --filter @loopv/chat build",
+    "deploy:portal": "pnpm --filter @loopv/portal deploy",
+    "deploy:chat": "pnpm --filter @loopv/chat deploy"
+  }
+}

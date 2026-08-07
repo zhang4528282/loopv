@@ -1,0 +1,216 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  --color-brand: #6c5ce7;
+  --color-brand-light: #a78bfa;
+  --color-brand-glow: rgba(108, 92, 231, 0.25);
+  --color-surface: #14141f;
+  --color-surface-hover: #1a1a2a;
+  --color-border: #1e1e30;
+  --color-terminal: #0d1117;
+  --color-ink: #e4e4ec;
+  --color-ink-muted: #8b8b9e;
+  --color-terminal-green: #00ff88;
+}
+
+/* ===== Base ===== */
+html {
+  background-color: #0a0a0f;
+  color: #e4e4ec;
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  position: relative;
+}
+
+/* Subtle dot grid background */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(108, 92, 231, 0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0a0a0f;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e1e30;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #6c5ce7;
+}
+
+/* ===== Selection ===== */
+::selection {
+  background: rgba(108, 92, 231, 0.4);
+  color: #ffffff;
+}
+
+/* ===== Keyframes ===== */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(108, 92, 231, 0.15), 0 0 60px rgba(108, 92, 231, 0.05);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(108, 92, 231, 0.3), 0 0 80px rgba(108, 92, 231, 0.1);
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes draw-border {
+  to { stroke-dashoffset: 0; }
+}
+
+/* ===== Animations Utility ===== */
+.animate-fade-in-up {
+  animation: fade-in-up 0.8s ease-out forwards;
+  opacity: 0;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.6s ease-out forwards;
+  opacity: 0;
+}
+
+.animate-blink {
+  animation: blink 1s step-end infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* ===== CRT Scanline Overlay (subtle, always-on) ===== */
+.crt-overlay {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.02) 2px,
+    rgba(0, 0, 0, 0.02) 4px
+  );
+}
+
+/* ===== Terminal Component Styles ===== */
+.terminal-window {
+  background: #0d1117;
+  border: 1px solid #1e1e30;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(108, 92, 231, 0.08);
+}
+
+.terminal-titlebar {
+  background: #161b22;
+  border-bottom: 1px solid #1e1e30;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.terminal-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.terminal-dot.red    { background: #ff5f56; }
+.terminal-dot.yellow { background: #ffbd2e; }
+.terminal-dot.green  { background: #27ca40; }
+
+.terminal-body {
+  padding: 16px 20px;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  font-size: 13px;
+  line-height: 1.8;
+  color: #c9d1d9;
+  min-height: 120px;
+  overflow: hidden;
+}
+
+.terminal-line {
+  display: flex;
+  min-height: 1.8em;
+}
+
+.terminal-prompt {
+  color: #00ff88;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.terminal-command {
+  color: #e4e4ec;
+}
+
+.terminal-output {
+  color: #8b8b9e;
+  padding-left: 4px;
+}
+
+.terminal-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 16px;
+  background: #a78bfa;
+  vertical-align: text-bottom;
+  margin-left: 2px;
+  animation: blink 1s step-end infinite;
+}
+
+/* ===== Section Spacing ===== */
+.section {
+  position: relative;
+  z-index: 1;
+}
