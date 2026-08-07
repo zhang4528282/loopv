@@ -19,7 +19,7 @@ new_sqlite_classes = ["ChatRoom"]
 [[d1_databases]]
 binding = "DB"
 database_name = "loopv-chat-db"
-database_id = "a1fdba44-17de-402e-8301-17cd1efb1e10"
+database_id = "" # 在 Cloudflare 创建 D1 后填入
 
 # R2 存储桶绑定
 [[r2_buckets]]

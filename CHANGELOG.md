@@ -17,10 +17,10 @@
 - WebSocket Hibernation API（空闲零计费）
 
 ### 部署
-- D1: `loopv-chat-db` (a1fdba44-17de-402e-8301-17cd1efb1e10)
+- D1: `loopv-chat-db`
 - R2: `loopv-chat-media`
-- Portal: Cloudflare Pages (`loopv-2yj.pages.dev`)
-- Worker: `loopv-chat` (`loopv-chat.zhjq88.workers.dev`)
+- Portal: Cloudflare Pages
+- Worker: `loopv-chat`
 - 域名: loopv.net → Pages, chat.loopv.net → Worker
 
 ### 待办
