@@ -1,20 +1,20 @@
 ---
 // Hero section with typewriter effect
-const name = "loopv";
+const name = "WaterMore";
 const taglines = [
-  "crafting digital experiences.",
-  "building for the open web.",
-  "where code meets design.",
-  "terminal-dwelling creator.",
+  "building thoughtful software.",
+  "design meets engineering.",
+  "clean code, clear mind.",
+  "exploring the digital frontier.",
 ];
-const subtitle = "Developer · Designer · Tinkerer";
+const subtitle = "Developer · Designer · Creator";
 ---
 
 <section class="section relative flex min-h-screen flex-col items-center justify-center px-6 pb-20 pt-24 text-center">
-  <!-- Background radial glow -->
+  <!-- Background gradient glow -->
   <div
-    class="pointer-events-none absolute top-1/3 left-1/2 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full"
-    style="background: radial-gradient(circle, rgba(108,92,231,0.06) 0%, transparent 70%);"
+    class="pointer-events-none absolute top-0 left-1/2 h-[700px] w-[700px] -translate-x-1/2 rounded-full opacity-60"
+    style="background: radial-gradient(circle at 50% 40%, rgba(139,92,246,0.08) 0%, rgba(99,102,241,0.04) 35%, transparent 70%);"
     aria-hidden="true"
   ></div>
 
@@ -25,8 +25,6 @@ const subtitle = "Developer · Designer · Tinkerer";
       style="animation-delay: 0.1s; letter-spacing: -0.03em;"
     >
       <span class="text-ink">{name}</span>
-      <span class="text-brand">.</span>
-      <span class="text-ink-muted">net</span>
     </h1>
 
     <!-- Tagline with typewriter -->
@@ -70,10 +68,10 @@ const subtitle = "Developer · Designer · Tinkerer";
 
 <script>
   const taglines = [
-    "crafting digital experiences.",
-    "building for the open web.",
-    "where code meets design.",
-    "terminal-dwelling creator.",
+    "building thoughtful software.",
+    "design meets engineering.",
+    "clean code, clear mind.",
+    "exploring the digital frontier.",
   ];
 
   const textEl = document.getElementById('typewriter-text');
@@ -96,12 +94,10 @@ const subtitle = "Developer · Designer · Tinkerer";
       if (isPaused) return;
 
       if (!isDeleting) {
-        // Typing forward
         charIndex++;
         textEl.textContent = currentPhrase.substring(0, charIndex);
 
         if (charIndex === currentPhrase.length) {
-          // Finished typing, pause
           isPaused = true;
           setTimeout(() => {
             isPaused = false;
@@ -111,7 +107,6 @@ const subtitle = "Developer · Designer · Tinkerer";
           return;
         }
       } else {
-        // Deleting
         charIndex--;
         textEl.textContent = currentPhrase.substring(0, charIndex);
 
@@ -131,7 +126,6 @@ const subtitle = "Developer · Designer · Tinkerer";
       type();
     }
 
-    // Initial delay before starting
     setTimeout(tick, 800);
   }
 </script>

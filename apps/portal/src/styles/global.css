@@ -3,22 +3,24 @@
 @theme {
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
-  --color-brand: #6c5ce7;
-  --color-brand-light: #a78bfa;
-  --color-brand-glow: rgba(108, 92, 231, 0.25);
-  --color-surface: #14141f;
-  --color-surface-hover: #1a1a2a;
-  --color-border: #1e1e30;
-  --color-terminal: #0d1117;
-  --color-ink: #e4e4ec;
-  --color-ink-muted: #8b8b9e;
-  --color-terminal-green: #00ff88;
+  --color-brand: #6366f1;
+  --color-brand-light: #8b5cf6;
+  --color-brand-soft: rgba(99, 102, 241, 0.08);
+  --color-surface: #ffffff;
+  --color-surface-hover: #f3f4f6;
+  --color-border: #e5e7eb;
+  --color-border-hover: #c7d2fe;
+  --color-terminal: #0a0a0f;
+  --color-terminal-bar: #161b22;
+  --color-ink: #1a1a2e;
+  --color-ink-muted: #6b7280;
+  --color-terminal-green: #00c853;
 }
 
 /* ===== Base ===== */
 html {
-  background-color: #0a0a0f;
-  color: #e4e4ec;
+  background-color: #fafafa;
+  color: #1a1a2e;
   font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
@@ -28,18 +30,6 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  position: relative;
-}
-
-/* Subtle dot grid background */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background-image: radial-gradient(circle, rgba(108, 92, 231, 0.04) 1px, transparent 1px);
-  background-size: 40px 40px;
-  pointer-events: none;
-  z-index: 0;
 }
 
 /* ===== Scrollbar ===== */
@@ -47,20 +37,20 @@ body::before {
   width: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0a0a0f;
+  background: #fafafa;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1e1e30;
+  background: #d1d5db;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #6c5ce7;
+  background: #9ca3af;
 }
 
 /* ===== Selection ===== */
 ::selection {
-  background: rgba(108, 92, 231, 0.4);
-  color: #ffffff;
+  background: rgba(99, 102, 241, 0.2);
+  color: #1a1a2e;
 }
 
 /* ===== Keyframes ===== */
@@ -85,22 +75,15 @@ body::before {
   to { opacity: 1; }
 }
 
-@keyframes pulse-glow {
-  0%, 100% {
-    box-shadow: 0 0 20px rgba(108, 92, 231, 0.15), 0 0 60px rgba(108, 92, 231, 0.05);
-  }
-  50% {
-    box-shadow: 0 0 30px rgba(108, 92, 231, 0.3), 0 0 80px rgba(108, 92, 231, 0.1);
-  }
-}
-
 @keyframes float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-8px); }
 }
 
-@keyframes draw-border {
-  to { stroke-dashoffset: 0; }
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
 /* ===== Animations Utility ===== */
@@ -118,36 +101,20 @@ body::before {
   animation: blink 1s step-end infinite;
 }
 
-.animate-pulse-glow {
-  animation: pulse-glow 3s ease-in-out infinite;
-}
-
 .animate-float {
   animation: float 6s ease-in-out infinite;
 }
 
-/* ===== CRT Scanline Overlay (subtle, always-on) ===== */
-.crt-overlay {
-  pointer-events: none;
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0, 0, 0, 0.02) 2px,
-    rgba(0, 0, 0, 0.02) 4px
-  );
-}
-
-/* ===== Terminal Component Styles ===== */
+/* ===== Terminal Component Styles (dark, for contrast) ===== */
 .terminal-window {
-  background: #0d1117;
+  background: #0a0a0f;
   border: 1px solid #1e1e30;
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(108, 92, 231, 0.08);
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.05),
+    0 10px 30px -10px rgba(0, 0, 0, 0.12),
+    0 0 0 1px rgba(0, 0, 0, 0.04);
 }
 
 .terminal-titlebar {
@@ -185,7 +152,7 @@ body::before {
 }
 
 .terminal-prompt {
-  color: #00ff88;
+  color: #00c853;
   margin-right: 8px;
   flex-shrink: 0;
 }
@@ -203,7 +170,7 @@ body::before {
   display: inline-block;
   width: 8px;
   height: 16px;
-  background: #a78bfa;
+  background: #8b5cf6;
   vertical-align: text-bottom;
   margin-left: 2px;
   animation: blink 1s step-end infinite;
