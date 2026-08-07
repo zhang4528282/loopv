@@ -19,7 +19,7 @@ new_classes = ["ChatRoom"]
 [[d1_databases]]
 binding = "DB"
 database_name = "loopv-chat-db"
-database_id = ""
+database_id = "a1fdba44-17de-402e-8301-17cd1efb1e10"
 
 # R2 存储桶绑定
 [[r2_buckets]]
