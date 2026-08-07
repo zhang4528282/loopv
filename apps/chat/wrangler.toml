@@ -26,6 +26,10 @@ database_id = "a1fdba44-17de-402e-8301-17cd1efb1e10"
 binding = "MEDIA_BUCKET"
 bucket_name = "loopv-chat-media"
 
+[[routes]]
+pattern = "chat.loopv.net/*"
+zone_name = "loopv.net"
+
 [vars]
 MAX_MESSAGES = "200"
 MAX_UPLOAD_SIZE = "52428800"
