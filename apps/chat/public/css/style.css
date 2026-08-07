@@ -339,6 +339,9 @@ body {
 
 #msg-input::placeholder {
   color: #9ca3af;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 #msg-input:focus {
