@@ -22,9 +22,8 @@ const terminalTitle = "watermore@shell — bash";
   const commands = [
     { prompt: 'watermore@shell:~$', cmd: 'whoami', output: 'WaterMore', delay: 400 },
     { prompt: 'watermore@shell:~$', cmd: 'cat /etc/motd', output: 'Welcome. You have reached WaterMore on the web.', delay: 600 },
-    { prompt: 'watermore@shell:~$', cmd: 'ssh chat@loopv.net', output: null, delay: 500 },
-    { prompt: 'watermore@shell:~$', cmd: '', output: 'Connecting to chat.loopv.net...', delay: 800 },
-    { prompt: 'watermore@shell:~$', cmd: '', output: 'Connection established. █', delay: 0 },
+    { prompt: 'watermore@shell:~$', cmd: 'uname -a', output: 'Web 1.0 :: Cloudflare Edge :: Astro 5.0', delay: 500 },
+    { prompt: 'watermore@shell:~$', cmd: '', output: 'Type help for more info. █', delay: 0 },
   ];
 
   const body = document.getElementById('terminal-body');

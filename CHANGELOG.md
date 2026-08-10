@@ -23,7 +23,6 @@
 - Worker: `loopv-chat`
 - 域名: loopv.net → Pages, chat.loopv.net → Worker
 
-### 待办
-- [ ] share.loopv.net 内容分享平台
-- [ ] 聊天室文件上传测试
-- [ ] 域名邮箱配置
+### 2026-08-07 (后续)
+- **聊天室下线**：chat.loopv.net 停止服务，代码保留在 `apps/chat/`，Worker 已删除
+- 门户移除聊天室入口卡片，Terminal 命令更新

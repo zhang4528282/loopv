@@ -11,7 +11,7 @@
 | 域名 | 用途 | 技术栈 |
 |---|---|---|
 | **loopv.net** | 个人门户主页 | Astro 5 + Tailwind CSS 4, Cloudflare Pages |
-| **chat.loopv.net** | 临时匿名聊天室 | Cloudflare Workers + Durable Objects + D1 + R2 + Hono |
+| **chat.loopv.net** | 临时匿名聊天室 (已下线) | Cloudflare Workers + Durable Objects + D1 + R2 + Hono |
 | share.loopv.net | (规划中) 内容分享平台 | — |
 
 ## 架构
