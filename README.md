@@ -7,7 +7,8 @@
 | 域名 | 用途 | 技术栈 |
 |---|---|---|
 | **[loopv.net](https://loopv.net)** | 个人门户主页 | Astro 5 + Tailwind CSS 4, Cloudflare Pages |
-| **[chat.loopv.net](https://chat.loopv.net)** | 临时匿名聊天室 | Cloudflare Workers + Durable Objects + D1 + R2 + Hono |
+| **[chat.loopv.net](https://chat.loopv.net)** | 匿名聊天室（注册登录） | Cloudflare Workers + Durable Objects + D1 + R2 + Hono |
+| **[admin.loopv.net](https://admin.loopv.net)** | 聊天室管理平台 | 同 chat Worker，host 路由区分 |
 
 ## 项目结构
 
@@ -19,11 +20,14 @@ apps/
 │       ├── layouts/      # 页面布局
 │       ├── pages/        # 路由页面
 │       └── styles/       # 全局样式
-└── chat/            # chat.loopv.net 聊天室
+└── chat/            # chat.loopv.net + admin.loopv.net
     ├── src/
     │   ├── worker.ts       # Worker 入口 + Hono 路由
-    │   └── chat-room.ts    # Durable Object (WebSocket 广播)
-    ├── public/             # 前端静态文件
+    │   ├── chat-room.ts    # Durable Object (WebSocket 广播)
+    │   └── auth.ts         # 密码哈希 + session 工具
+    ├── public/
+    │   ├── chat/           # 聊天室前端
+    │   └── admin/          # 管理平台前端
     └── migrations/         # D1 数据库初始化 SQL
 ```
 
@@ -41,6 +45,15 @@ apps/
 - **消息持久化**：D1（边缘 SQLite）
 - **媒体存储**：R2（免出站流量费）
 - 消息类型支持：文本、图片、视频、音频、表情包
+
+## 功能特性
+
+- **认证系统**：用户名 + 密码 + 昵称注册登录（无邮箱/手机验证），PBKDF2 密码哈希 + session
+- **用户资料**：自主修改昵称、上传头像（可选）
+- **消息撤回**：不限时撤回自己的消息，管理员可撤回任意消息
+- **在线用户列表**：实时显示在线成员
+- **管理平台**：统计看板、用户管理（封禁/测试用户）、消息管理（撤回/删除/批量/筛选）
+- **时间显示**：统一北京时间（UTC+8）
 
 ## 快速开始
 
