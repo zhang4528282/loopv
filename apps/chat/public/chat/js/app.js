@@ -317,11 +317,15 @@ function enterChat() {
 async function loadHistory() {
   try {
     const data = await api(`/api/history?limit=${MAX_HISTORY}`);
+    // 清空旧消息，避免重复追加
+    dom.messages.innerHTML = "";
     if (data.messages && data.messages.length) {
       dom.messagesEmpty.classList.add("hidden");
       for (const msg of data.messages) {
         appendMessage(msg, false);
       }
+    } else {
+      dom.messagesEmpty.classList.remove("hidden");
     }
     scrollToBottom(true);
   } catch (err) {

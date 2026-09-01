@@ -7,15 +7,8 @@ interface UserInfo {
   isAdmin: boolean;
 }
 
-interface AuthedClient {
-  ws: WebSocket;
-  user: UserInfo;
-}
-
 export class ChatRoom extends DurableObject {
   private env: Env;
-  // 已认证的连接
-  private clients: Map<WebSocket, UserInfo> = new Map();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -62,15 +55,18 @@ export class ChatRoom extends DurableObject {
     }
   }
 
-  // 认证连接
+  // 认证连接：用 serializeAttachment 存储用户信息（Hibernation 安全）
   private async handleAuth(ws: WebSocket, token: string): Promise<void> {
     const user = await this.getUserByToken(token);
     if (!user) {
-      ws.send(JSON.stringify({ type: "auth_error", message: "登录已失效，请重新登录" }));
+      ws.send(
+        JSON.stringify({ type: "auth_error", message: "登录已失效，请重新登录" })
+      );
       ws.close(4001, "unauthorized");
       return;
     }
-    this.clients.set(ws, user);
+    // 关键：用 serializeAttachment 替代内存 Map，DO 休眠唤醒后仍能恢复
+    ws.serializeAttachment(user);
     ws.send(
       JSON.stringify({
         type: "auth_ok",
@@ -84,7 +80,7 @@ export class ChatRoom extends DurableObject {
 
   // 发送消息
   private async handleMessage(ws: WebSocket, data: any): Promise<void> {
-    const user = this.clients.get(ws);
+    const user = ws.deserializeAttachment() as UserInfo | undefined;
     if (!user) {
       ws.send(JSON.stringify({ type: "error", message: "请先登录" }));
       return;
@@ -131,13 +127,12 @@ export class ChatRoom extends DurableObject {
 
   // 撤回消息
   private async handleDelete(ws: WebSocket, messageId: number): Promise<void> {
-    const user = this.clients.get(ws);
+    const user = ws.deserializeAttachment() as UserInfo | undefined;
     if (!user) {
       ws.send(JSON.stringify({ type: "error", message: "请先登录" }));
       return;
     }
 
-    // 查询消息归属
     const msg = await this.env.DB.prepare(
       `SELECT user_id, deleted FROM messages WHERE id = ?1`
     )
@@ -154,14 +149,12 @@ export class ChatRoom extends DurableObject {
     }
 
     // 只有消息作者或管理员能撤回
-    if (msg.user_id !== user.userId && !user.isAdmin) {
+    if ((msg.user_id as number) !== user.userId && !user.isAdmin) {
       ws.send(JSON.stringify({ type: "error", message: "只能撤回自己的消息" }));
       return;
     }
 
-    await this.env.DB.prepare(
-      `UPDATE messages SET deleted = 1 WHERE id = ?1`
-    )
+    await this.env.DB.prepare(`UPDATE messages SET deleted = 1 WHERE id = ?1`)
       .bind(messageId)
       .run();
 
@@ -181,15 +174,16 @@ export class ChatRoom extends DurableObject {
     if (!session) return null;
 
     const now = Math.floor(Date.now() / 1000);
-    if (session.expires_at < now) return null;
+    if ((session.expires_at as number) < now) return null;
 
     const user = await this.env.DB.prepare(
-      `SELECT id, nickname, avatar_url, is_admin FROM users WHERE id = ?1`
+      `SELECT id, nickname, avatar_url, is_admin, banned FROM users WHERE id = ?1`
     )
-      .bind(session.user_id)
+      .bind(session.user_id as number)
       .first();
 
     if (!user) return null;
+    if ((user.banned as number) === 1) return null;
 
     return {
       userId: user.id as number,
@@ -218,11 +212,10 @@ export class ChatRoom extends DurableObject {
     reason: string,
     wasClean: boolean
   ): Promise<void> {
-    this.clients.delete(ws);
+    // 无需清理：serializeAttachment 状态随连接自动释放
   }
 
   async webSocketError(ws: WebSocket, error: Error): Promise<void> {
-    this.clients.delete(ws);
     console.error("webSocketError:", error);
   }
 }
