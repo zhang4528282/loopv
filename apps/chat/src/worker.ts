@@ -335,6 +335,13 @@ app.put("/api/user/nickname", async (c) => {
     .bind(nickname, user.id)
     .run();
 
+  // 同步历史消息快照
+  await c.env.DB.prepare(`UPDATE messages SET nickname = ?1 WHERE user_id = ?2`)
+    .bind(nickname, user.id)
+    .run();
+
+  await notifyProfileUpdate(c.env, user.id, nickname, user.avatar_url);
+
   return c.json({ success: true, nickname });
 });
 
@@ -376,6 +383,13 @@ app.post("/api/user/avatar", async (c) => {
   await c.env.DB.prepare(`UPDATE users SET avatar_url = ?1 WHERE id = ?2`)
     .bind(url, user.id)
     .run();
+
+  // 同步历史消息快照
+  await c.env.DB.prepare(`UPDATE messages SET avatar_url = ?1 WHERE user_id = ?2`)
+    .bind(url, user.id)
+    .run();
+
+  await notifyProfileUpdate(c.env, user.id, user.nickname, url);
 
   return c.json({ success: true, avatar_url: url });
 });
@@ -501,6 +515,25 @@ async function notifyRoom(env: Bindings, payload: any) {
     });
   } catch (e) {
     console.error("notifyRoom error:", e);
+  }
+}
+
+// 通知 DO 更新某用户的资料（昵称/头像变更后刷新在线连接的 attachment）
+async function notifyProfileUpdate(
+  env: Bindings,
+  userId: number,
+  nickname: string,
+  avatarUrl: string | null
+): Promise<void> {
+  try {
+    const id = env.CHAT_ROOM.idFromName("main");
+    const stub = env.CHAT_ROOM.get(id);
+    await stub.fetch("https://internal/profile-update", {
+      method: "POST",
+      body: JSON.stringify({ userId, nickname, avatarUrl }),
+    });
+  } catch (e) {
+    console.error("notifyProfileUpdate error:", e);
   }
 }
 

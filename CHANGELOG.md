@@ -137,3 +137,9 @@
 
 #### 额外加固
 - **管理平台**：admin API 仅允许通过 `admin.loopv.net` 域名访问（本地开发 localhost 放行），通过 chat 域名访问管理接口返回 403
+
+### 2026-09-01 (昵称/头像同步修复)
+
+#### 修复
+- **历史消息资料不同步**：修改昵称/头像后，同步 `UPDATE messages` 表中该用户的历史消息快照（nickname / avatar_url），历史消息即时显示最新资料
+- **在线连接资料缓存**：修改资料后通过内部 `/profile-update` 通知 DO，刷新该用户所有在线 WebSocket 连接的 `serializeAttachment`，新消息与在线列表即时显示最新昵称/头像，无需重新连接

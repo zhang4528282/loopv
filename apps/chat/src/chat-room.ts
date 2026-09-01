@@ -38,6 +38,28 @@ export class ChatRoom extends DurableObject {
       return new Response("ok");
     }
 
+    // 内部资料更新请求（昵称/头像变更后刷新对应连接的认证状态）
+    if (url.pathname === "/profile-update" && request.method === "POST") {
+      try {
+        const { userId, nickname, avatarUrl } = await request.json();
+        // 更新该用户所有在线连接的 attachment
+        for (const sock of this.ctx.getWebSockets()) {
+          try {
+            const u = sock.deserializeAttachment() as UserInfo | undefined;
+            if (u && u.userId === userId) {
+              sock.serializeAttachment({ ...u, nickname, avatarUrl });
+            }
+          } catch {
+            // 忽略无法读取状态的连接
+          }
+        }
+        this.broadcastOnlineUsers();
+      } catch (e) {
+        console.error("profile-update error:", e);
+      }
+      return new Response("ok");
+    }
+
     // WebSocket 升级
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
