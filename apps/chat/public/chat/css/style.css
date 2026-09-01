@@ -289,10 +289,188 @@ svg {
   flex-direction: column;
   height: 100vh; /* 兜底 */
   height: 100dvh;
-  max-width: 900px;
+  max-width: 1140px;
   margin: 0 auto;
   background: var(--bg);
   position: relative;
+}
+
+/* 聊天主体：消息列 + 在线侧边栏并排 */
+.chat-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chat-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ============================================================
+   在线成员侧边栏
+   ============================================================ */
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sidebar-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.sidebar-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(99, 102, 241, 0.1);
+  padding: 1px 9px;
+  border-radius: 20px;
+}
+
+.sidebar-close {
+  display: none;
+  margin-left: auto;
+}
+
+.sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  overscroll-behavior: contain;
+}
+
+.sidebar-empty {
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.online-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  transition: background 0.12s;
+}
+
+.online-item:hover {
+  background: var(--bg-hover);
+}
+
+.online-avatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  user-select: none;
+}
+
+.online-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.online-name {
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.online-me {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.online-admin {
+  color: var(--accent);
+  font-size: 11px;
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  padding: 1px 6px;
+  border-radius: 999px;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+/* 顶栏「在线」按钮（仅移动端显示） */
+.btn-online {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  padding: 7px 9px;
+  border-radius: 9px;
+  color: var(--text-dim);
+  position: relative;
+  transition: background 0.15s, color 0.15s;
+}
+
+.btn-online svg {
+  width: 20px;
+  height: 20px;
+}
+
+.btn-online:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.online-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--grad);
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 移动端抽屉遮罩 */
+.online-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(2px);
+  z-index: 110;
 }
 
 /* ============================================================
@@ -621,14 +799,10 @@ svg {
   color: #9ca3af;
 }
 
-/* 撤回按钮 */
+/* 撤回按钮 —— 常显示，避免 hover 显示导致布局抖动 */
 .msg-actions {
-  display: none;
-  gap: 6px;
-}
-
-.msg-row.own:hover .msg-actions {
   display: flex;
+  gap: 6px;
 }
 
 .btn-delete {
@@ -1078,6 +1252,31 @@ svg {
 /* ============================================================
    响应式
    ============================================================ */
+@media (max-width: 900px) {
+  /* 侧边栏变为右侧抽屉 */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(300px, 85vw);
+    z-index: 120;
+    border-left: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+    transform: translateX(100%);
+    transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  .sidebar-close {
+    display: flex;
+  }
+  .btn-online {
+    display: flex;
+  }
+}
+
 @media (max-width: 640px) {
   .topbar {
     padding: 10px 12px;
@@ -1086,12 +1285,16 @@ svg {
     font-size: 15px;
   }
   .room-badge {
-    font-size: 11px;
-    padding: 2px 8px;
+    display: none;
+  }
+  .conn-dot {
+    display: none;
+  }
+  .me-info {
+    padding: 3px;
   }
   .me-nickname {
-    max-width: 72px;
-    font-size: 12px;
+    display: none;
   }
   .messages {
     padding: 14px 12px;
@@ -1146,12 +1349,5 @@ svg {
   }
   .auth-card {
     padding: 28px 22px 24px;
-  }
-}
-
-/* 触屏设备无 hover，常驻显示撤回按钮 */
-@media (hover: none) {
-  .msg-row.own .msg-actions {
-    display: flex;
   }
 }

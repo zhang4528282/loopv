@@ -31,6 +31,8 @@ const state = {
   pendingFile: null, // { file, type }
   pendingAvatar: null, // File | null
   mode: "login", // login | register
+  onlineUsers: [], // 在线用户列表
+  onlineCount: 0,
 };
 
 // ========== DOM 引用 ==========
@@ -88,6 +90,15 @@ const dom = {
   // 其他
   btnLogout: $("#btn-logout"),
   toast: $("#toast"),
+
+  // 在线成员
+  sidebar: $("#sidebar"),
+  sidebarCount: $("#sidebar-count"),
+  onlineList: $("#online-list"),
+  btnOnline: $("#btn-online"),
+  onlineCountBadge: $("#online-count-badge"),
+  onlineBackdrop: $("#online-backdrop"),
+  btnSidebarClose: $("#btn-sidebar-close"),
 };
 
 // ========== 工具函数 ==========
@@ -412,6 +423,10 @@ function handleWsMessage(data) {
       markDeleted(data.id);
       break;
 
+    case "online_users":
+      renderOnlineUsers(data.users || [], data.count);
+      break;
+
     case "error":
       toast(data.message || "操作失败", "error");
       break;
@@ -438,6 +453,60 @@ function scheduleReconnect() {
     if (state.token) connectWs();
   }, state.reconnectDelay);
   state.reconnectDelay = Math.min(state.reconnectDelay * 2, 15000);
+}
+
+// ========== 在线成员 ==========
+function renderOnlineUsers(users, count) {
+  state.onlineUsers = users || [];
+  state.onlineCount = count != null ? count : state.onlineUsers.length;
+
+  dom.sidebarCount.textContent = state.onlineCount;
+  dom.onlineCountBadge.textContent = state.onlineCount;
+
+  dom.onlineList.innerHTML = "";
+  if (!state.onlineUsers.length) {
+    const empty = document.createElement("div");
+    empty.className = "sidebar-empty";
+    empty.textContent = "暂无在线用户";
+    dom.onlineList.appendChild(empty);
+    return;
+  }
+
+  const meId = Number(state.user?.id);
+  for (const u of state.onlineUsers) {
+    const item = document.createElement("div");
+    item.className = "online-item";
+    item.appendChild(createAvatar(u.nickname || "匿名", u.avatarUrl || null, "online-avatar"));
+
+    const name = document.createElement("span");
+    name.className = "online-name";
+    name.textContent = u.nickname || "匿名";
+    name.title = u.nickname || "匿名";
+    if (u.isAdmin) {
+      const admin = document.createElement("span");
+      admin.className = "online-admin";
+      admin.textContent = "管理员";
+      name.appendChild(admin);
+    }
+    if (Number(u.userId) === meId) {
+      const me = document.createElement("span");
+      me.className = "online-me";
+      me.textContent = "（我）";
+      name.appendChild(me);
+    }
+    item.appendChild(name);
+    dom.onlineList.appendChild(item);
+  }
+}
+
+function openOnlinePanel() {
+  dom.sidebar.classList.add("open");
+  dom.onlineBackdrop.classList.remove("hidden");
+}
+
+function closeOnlinePanel() {
+  dom.sidebar.classList.remove("open");
+  dom.onlineBackdrop.classList.add("hidden");
 }
 
 // ========== 消息渲染 ==========
@@ -876,6 +945,7 @@ function bindEvents() {
       closePreview();
       dom.settingsModal.classList.add("hidden");
       dom.emojiPicker.classList.add("hidden");
+      closeOnlinePanel();
     }
   });
 
@@ -897,6 +967,17 @@ function bindEvents() {
     renderSettingsAvatar();
   });
   dom.btnSaveSettings.addEventListener("click", saveSettings);
+
+  // 在线成员
+  dom.btnOnline.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openOnlinePanel();
+  });
+  dom.btnSidebarClose.addEventListener("click", closeOnlinePanel);
+  dom.onlineBackdrop.addEventListener("click", closeOnlinePanel);
+  window.addEventListener("resize", () => {
+    if (window.innerWidth > 900) closeOnlinePanel();
+  });
 
   // 粘贴图片
   document.addEventListener("paste", (e) => {

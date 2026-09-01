@@ -76,6 +76,40 @@ export class ChatRoom extends DurableObject {
         isAdmin: user.isAdmin,
       })
     );
+
+    // 广播最新在线用户列表
+    this.broadcastOnlineUsers();
+  }
+
+  // 获取当前在线用户（按 userId 去重，一个用户可多端连接）
+  private getOnlineUsers(): UserInfo[] {
+    const users = new Map<number, UserInfo>();
+    for (const sock of this.ctx.getWebSockets()) {
+      try {
+        const user = sock.deserializeAttachment() as UserInfo | undefined;
+        if (user && !users.has(user.userId)) {
+          users.set(user.userId, user);
+        }
+      } catch {
+        // 忽略无法读取状态的连接
+      }
+    }
+    return Array.from(users.values());
+  }
+
+  // 广播在线用户列表
+  private broadcastOnlineUsers(): void {
+    const users = this.getOnlineUsers();
+    this.broadcast({
+      type: "online_users",
+      count: users.length,
+      users: users.map((u) => ({
+        userId: u.userId,
+        nickname: u.nickname,
+        avatarUrl: u.avatarUrl,
+        isAdmin: u.isAdmin,
+      })),
+    });
   }
 
   // 发送消息
@@ -212,7 +246,8 @@ export class ChatRoom extends DurableObject {
     reason: string,
     wasClean: boolean
   ): Promise<void> {
-    // 无需清理：serializeAttachment 状态随连接自动释放
+    // 连接断开后广播最新在线用户列表
+    this.broadcastOnlineUsers();
   }
 
   async webSocketError(ws: WebSocket, error: Error): Promise<void> {
