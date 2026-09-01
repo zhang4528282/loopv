@@ -1,5 +1,7 @@
 // 按 IP 的登录/注册限流器（Durable Object 持久化，防暴力破解）
 // 10 分钟内最多 5 次失败，超过则锁定 15 分钟
+import { DurableObject } from "cloudflare:workers";
+
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_FAILURES = 5;
 const LOCK_MS = 15 * 60 * 1000;
