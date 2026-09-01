@@ -1,123 +1,98 @@
 ---
-// Simulated terminal window — dark, as visual contrast on light page
-const terminalTitle = "watermore@shell — bash";
+const terminalTitle = "watermore@loopv: ~";
 ---
 
-<div class="terminal-window w-full max-w-lg mx-auto animate-fade-in-up" style="animation-delay: 1.0s;">
-  <!-- Title bar -->
-  <div class="terminal-titlebar">
-    <div class="terminal-dot red"></div>
-    <div class="terminal-dot yellow"></div>
-    <div class="terminal-dot green"></div>
-    <span class="ml-3 font-mono text-xs" style="color: #8b8b9e;">{terminalTitle}</span>
+<div class="terminal w-full">
+  <div class="terminal-bar">
+    <div class="terminal-dot r"></div>
+    <div class="terminal-dot y"></div>
+    <div class="terminal-dot g"></div>
+    <span class="terminal-title">{terminalTitle}</span>
   </div>
-
-  <!-- Terminal body -->
-  <div class="terminal-body" id="terminal-body">
-    <!-- Lines will be injected by JS -->
-  </div>
+  <div class="terminal-body" id="terminal-body"></div>
 </div>
 
 <script>
-  const commands = [
-    { prompt: 'watermore@shell:~$', cmd: 'whoami', output: 'WaterMore', delay: 400 },
-    { prompt: 'watermore@shell:~$', cmd: 'cat /etc/motd', output: 'Welcome. You have reached WaterMore on the web.', delay: 600 },
-    { prompt: 'watermore@shell:~$', cmd: 'uname -a', output: 'Web 1.0 :: Cloudflare Edge :: Astro 5.0', delay: 500 },
-    { prompt: 'watermore@shell:~$', cmd: '', output: 'Type help for more info. █', delay: 0 },
+  const lines = [
+    { prompt: 'watermore@loopv:~$', cmd: 'whoami', output: 'WaterMore', delay: 500 },
+    { prompt: 'watermore@loopv:~$', cmd: 'cat ~/about', output: '写代码，做设计，维护 loopv.net', delay: 650 },
+    { prompt: 'watermore@loopv:~$', cmd: 'ls ./sites', output: 'loopv.net  chat.loopv.net', delay: 550 },
   ];
 
   const body = document.getElementById('terminal-body');
-  if (!body) throw new Error('Terminal body not found');
+  if (body) {
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  let currentLineEl: HTMLDivElement | null = null;
+    function makeLine() {
+      const line = document.createElement('div');
+      line.className = 'terminal-line';
+      body.appendChild(line);
+      return line;
+    }
 
-  function createLine(): HTMLDivElement {
-    const line = document.createElement('div');
-    line.className = 'terminal-line';
-    body.appendChild(line);
-    return line;
-  }
+    function el(cls, text) {
+      const span = document.createElement('span');
+      span.className = cls;
+      if (text !== undefined) span.textContent = text;
+      return span;
+    }
 
-  function createPromptEl(text: string): HTMLSpanElement {
-    const span = document.createElement('span');
-    span.className = 'terminal-prompt';
-    span.textContent = text;
-    return span;
-  }
-
-  function createCmdEl(): HTMLSpanElement {
-    const span = document.createElement('span');
-    span.className = 'terminal-command';
-    return span;
-  }
-
-  function createOutputEl(text: string): HTMLSpanElement {
-    const span = document.createElement('span');
-    span.className = 'terminal-output';
-    span.textContent = text;
-    return span;
-  }
-
-  function createCursorEl(): HTMLSpanElement {
-    const span = document.createElement('span');
-    span.className = 'terminal-cursor';
-    return span;
-  }
-
-  function typeText(
-    el: HTMLSpanElement,
-    text: string,
-    speed: number = 50
-  ): Promise<void> {
-    return new Promise((resolve) => {
-      let i = 0;
-      const interval = setInterval(() => {
-        el.textContent += text[i];
-        i++;
-        if (i >= text.length) {
-          clearInterval(interval);
-          resolve();
-        }
-      }, speed);
-    });
-  }
-
-  async function runSequence() {
-    await new Promise((r) => setTimeout(r, 600));
-
-    for (let idx = 0; idx < commands.length; idx++) {
-      const { prompt, cmd, output, delay } = commands[idx];
-
-      const line = createLine();
-      line.appendChild(createPromptEl(prompt + ' '));
-
-      if (cmd) {
-        const cmdEl = createCmdEl();
-        line.appendChild(cmdEl);
-        const cursor = createCursorEl();
-        line.appendChild(cursor);
-
-        await typeText(cmdEl, cmd, 60);
-        cursor.remove();
-
-        await new Promise((r) => setTimeout(r, delay));
-      }
-
-      if (output) {
-        const outLine = createLine();
-        outLine.appendChild(createOutputEl(output));
-
-        if (idx === commands.length - 1) {
-          const cursor = createCursorEl();
-          outLine.appendChild(cursor);
-        }
-
-        if (delay > 0) {
-          await new Promise((r) => setTimeout(r, delay));
+    function renderStatic() {
+      for (const l of lines) {
+        const line = makeLine();
+        line.appendChild(el('terminal-prompt', l.prompt + ' '));
+        if (l.cmd) line.appendChild(el('terminal-command', l.cmd));
+        if (l.output) {
+          const out = makeLine();
+          out.appendChild(el('terminal-output', l.output));
         }
       }
+      const last = makeLine();
+      last.appendChild(el('terminal-prompt', 'watermore@loopv:~$'));
+      last.appendChild(el('terminal-cursor'));
+    }
+
+    if (prefersReduced) {
+      renderStatic();
+    } else {
+      function typeInto(span, text, speed) {
+        return new Promise((resolve) => {
+          let n = 0;
+          const timer = setInterval(() => {
+            span.textContent += text[n];
+            n++;
+            if (n >= text.length) {
+              clearInterval(timer);
+              resolve();
+            }
+          }, speed);
+        });
+      }
+
+      (async () => {
+        await new Promise((r) => setTimeout(r, 400));
+        for (const l of lines) {
+          const line = makeLine();
+          line.appendChild(el('terminal-prompt', l.prompt + ' '));
+          if (l.cmd) {
+            const cmd = el('terminal-command');
+            const cursor = el('terminal-cursor');
+            line.appendChild(cmd);
+            line.appendChild(cursor);
+            await typeInto(cmd, l.cmd, 55);
+            cursor.remove();
+            await new Promise((r) => setTimeout(r, l.delay));
+          }
+          if (l.output) {
+            const out = makeLine();
+            out.appendChild(el('terminal-output', l.output));
+            await new Promise((r) => setTimeout(r, l.delay));
+          }
+        }
+        const last = makeLine();
+        last.appendChild(el('terminal-prompt', 'watermore@loopv:~$'));
+        last.appendChild(el('terminal-cursor'));
+      })();
     }
   }
-
-  runSequence();
 </script>

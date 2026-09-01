@@ -1,131 +1,54 @@
 ---
-// Hero section with typewriter effect
-const name = "WaterMore";
-const taglines = [
-  "building thoughtful software.",
-  "design meets engineering.",
-  "clean code, clear mind.",
-  "exploring the digital frontier.",
-];
-const subtitle = "Developer · Designer · Creator";
+import Terminal from './Terminal.astro';
 ---
 
-<section class="section relative flex min-h-screen flex-col items-center justify-center px-6 pb-20 pt-24 text-center">
-  <!-- Background gradient glow -->
-  <div
-    class="pointer-events-none absolute top-0 left-1/2 h-[700px] w-[700px] -translate-x-1/2 rounded-full opacity-60"
-    style="background: radial-gradient(circle at 50% 40%, rgba(139,92,246,0.08) 0%, rgba(99,102,241,0.04) 35%, transparent 70%);"
-    aria-hidden="true"
-  ></div>
+<section class="px-5 pt-16 pb-16 sm:px-6 sm:pt-24 sm:pb-20">
+  <div class="mx-auto grid max-w-5xl grid-cols-1 items-start gap-12 lg:grid-cols-12 lg:gap-10">
+    <!-- 左栏：标题 + 定位 -->
+    <div class="lg:col-span-7">
+      <p class="animate-fade-up font-mono text-[13px] text-accent" style="animation-delay: 0.05s">
+        ~/watermore
+      </p>
 
-  <div class="relative z-10 flex flex-col items-center gap-6">
-    <!-- Name -->
-    <h1
-      class="animate-fade-in text-6xl font-extrabold tracking-tight sm:text-7xl md:text-8xl"
-      style="animation-delay: 0.1s; letter-spacing: -0.03em;"
-    >
-      <span class="text-ink">{name}</span>
-    </h1>
+      <h1
+        class="animate-fade-up mt-5 text-6xl font-semibold leading-[0.95] tracking-tighter text-ink sm:text-7xl lg:text-8xl"
+        style="animation-delay: 0.12s"
+      >
+        WaterMore
+      </h1>
 
-    <!-- Tagline with typewriter -->
-    <div
-      class="animate-fade-in-up flex items-center gap-1 text-xl text-ink-muted sm:text-2xl"
-      style="animation-delay: 0.4s;"
-    >
-      <span class="font-mono text-brand" aria-hidden="true">&gt;</span>
-      <span class="inline-flex items-center">
-        <span id="typewriter-text" class="inline-block"></span>
-        <span
-          id="typewriter-cursor"
-          class="ml-0.5 inline-block h-[1.1em] w-[2px] bg-brand animate-blink align-middle"
-          aria-hidden="true"
-        ></span>
-      </span>
+      <p
+        class="animate-fade-up mt-7 max-w-prose text-xl leading-relaxed text-ink-muted sm:text-2xl"
+        style="animation-delay: 0.22s"
+      >
+        你好，我是 WaterMore。我做 web 产品——写代码，也做设计。
+      </p>
+
+      <p
+        class="animate-fade-up mt-4 max-w-prose text-base leading-relaxed text-ink-faint"
+        style="animation-delay: 0.3s"
+      >
+        这里是我的个人主页，偶尔更新。想聊天的话，欢迎去
+        <a
+          href="https://chat.loopv.net"
+          class="text-accent underline decoration-line-strong underline-offset-4 transition-colors hover:text-accent-hover"
+        >聊天室</a
+        >坐坐。
+      </p>
+
+      <a
+        href="#about"
+        class="animate-fade-up mt-10 inline-flex items-center gap-2 font-mono text-sm text-ink-muted transition-colors hover:text-ink"
+        style="animation-delay: 0.42s"
+      >
+        了解更多
+        <span aria-hidden="true">↓</span>
+      </a>
     </div>
 
-    <!-- Subtitle -->
-    <p
-      class="animate-fade-in-up max-w-md text-base text-ink-muted sm:text-lg"
-      style="animation-delay: 0.8s;"
-    >
-      {subtitle}
-    </p>
-  </div>
-
-  <!-- Scroll indicator -->
-  <div
-    class="animate-fade-in absolute bottom-8 left-1/2 -translate-x-1/2"
-    style="animation-delay: 1.2s;"
-  >
-    <div class="flex flex-col items-center gap-2 text-ink-muted">
-      <span class="font-mono text-xs tracking-widest uppercase">Scroll</span>
-      <div class="h-8 w-[1px] bg-border">
-        <div class="h-3 w-[1px] bg-brand animate-pulse"></div>
-      </div>
+    <!-- 右栏：终端（不对称下沉） -->
+    <div class="animate-fade-up lg:col-span-5 lg:pt-10" style="animation-delay: 0.32s">
+      <Terminal />
     </div>
   </div>
 </section>
-
-<script>
-  const taglines = [
-    "building thoughtful software.",
-    "design meets engineering.",
-    "clean code, clear mind.",
-    "exploring the digital frontier.",
-  ];
-
-  const textEl = document.getElementById('typewriter-text');
-  const cursorEl = document.getElementById('typewriter-cursor');
-
-  if (textEl && cursorEl) {
-    let phraseIndex = 0;
-    let charIndex = 0;
-    let isDeleting = false;
-    let isPaused = false;
-
-    const typeSpeed = 60;
-    const deleteSpeed = 30;
-    const pauseDuration = 2500;
-    const nextPhraseDelay = 600;
-
-    function type() {
-      const currentPhrase = taglines[phraseIndex];
-
-      if (isPaused) return;
-
-      if (!isDeleting) {
-        charIndex++;
-        textEl.textContent = currentPhrase.substring(0, charIndex);
-
-        if (charIndex === currentPhrase.length) {
-          isPaused = true;
-          setTimeout(() => {
-            isPaused = false;
-            isDeleting = true;
-            tick();
-          }, pauseDuration);
-          return;
-        }
-      } else {
-        charIndex--;
-        textEl.textContent = currentPhrase.substring(0, charIndex);
-
-        if (charIndex === 0) {
-          isDeleting = false;
-          phraseIndex = (phraseIndex + 1) % taglines.length;
-          setTimeout(() => tick(), nextPhraseDelay);
-          return;
-        }
-      }
-
-      const speed = isDeleting ? deleteSpeed : typeSpeed;
-      setTimeout(tick, speed);
-    }
-
-    function tick() {
-      type();
-    }
-
-    setTimeout(tick, 800);
-  }
-</script>

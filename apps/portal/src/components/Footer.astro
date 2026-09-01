@@ -1,16 +1,15 @@
 ---
-// Minimal footer — light theme
 const year = new Date().getFullYear();
 ---
 
-<footer class="section border-t border-border px-6 py-8">
-  <div class="mx-auto max-w-2xl flex flex-col items-center gap-2 text-center sm:flex-row sm:justify-between sm:text-left">
-    <p class="font-mono text-xs text-ink-muted">
-      &copy; {year} <span class="text-ink">WaterMore</span>
-    </p>
-    <p class="font-mono text-xs text-ink-muted">
-      <span class="text-brand/60" aria-hidden="true">$ exit</span>
-      <span class="ml-2">Thanks for stopping by.</span>
-    </p>
+<footer class="border-t border-line px-5 py-10 sm:px-6">
+  <div class="mx-auto flex max-w-5xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <p class="font-mono text-xs text-ink-faint">© {year} WaterMore</p>
+    <div class="flex items-center gap-6">
+      <a href="https://chat.loopv.net" class="text-xs text-ink-muted transition-colors hover:text-ink">
+        聊天室
+      </a>
+      <span class="font-mono text-xs text-ink-faint">Astro · Cloudflare</span>
+    </div>
   </div>
 </footer>
