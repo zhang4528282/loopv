@@ -7,7 +7,31 @@
 // ========== 常量 ==========
 const TOKEN_KEY = "loopv_chat_token";
 const USER_KEY = "loopv_chat_user";
+const TZ_KEY = "loopv_chat_timezone";
 const MAX_HISTORY = 50;
+
+// 常用时区（中文名 + IANA 标识，UTC 偏移由 Intl 动态计算）
+const TIMEZONES = [
+  { value: "Asia/Shanghai", label: "中国标准时间" },
+  { value: "Asia/Hong_Kong", label: "香港" },
+  { value: "Asia/Taipei", label: "台北" },
+  { value: "Asia/Singapore", label: "新加坡" },
+  { value: "Asia/Tokyo", label: "东京" },
+  { value: "Asia/Seoul", label: "首尔" },
+  { value: "Asia/Bangkok", label: "曼谷" },
+  { value: "Asia/Kolkata", label: "印度" },
+  { value: "Asia/Dubai", label: "迪拜" },
+  { value: "UTC", label: "协调世界时" },
+  { value: "Europe/London", label: "伦敦" },
+  { value: "Europe/Paris", label: "巴黎" },
+  { value: "Europe/Berlin", label: "柏林" },
+  { value: "America/New_York", label: "纽约" },
+  { value: "America/Chicago", label: "芝加哥" },
+  { value: "America/Los_Angeles", label: "洛杉矶" },
+  { value: "America/Toronto", label: "多伦多" },
+  { value: "Australia/Sydney", label: "悉尼" },
+  { value: "Pacific/Auckland", label: "奥克兰" },
+];
 
 const EMOJIS = [
   "😀", "😂", "🤣", "😍", "🥰", "😘", "😜", "🤪", "😎", "🤩", "😤", "😭", "😱", "🤯", "🥳", "🫠",
@@ -82,6 +106,7 @@ const dom = {
   btnSettings: $("#btn-settings"),
   btnCloseSettings: $("#btn-close-settings"),
   nicknameInput: $("#nickname-input"),
+  timezoneSelect: $("#timezone-select"),
   btnSaveSettings: $("#btn-save-settings"),
   settingsAvatarPreview: $("#settings-avatar-preview"),
   btnAvatarUpload: $("#btn-avatar-upload"),
@@ -125,11 +150,16 @@ function api(path, options = {}) {
   });
 }
 
-// 北京时间格式化：秒级时间戳 → "2026年08月07日 14:30"
+// 读取用户设置的时区，默认东八区（北京时间）
+function getTimezone() {
+  return localStorage.getItem(TZ_KEY) || "Asia/Shanghai";
+}
+
+// 时间格式化：秒级时间戳 → "2026年08月07日 14:30"（按用户设置的时区）
 function formatTime(ts) {
   const date = new Date((ts || Math.floor(Date.now() / 1000)) * 1000);
   const fmt = new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai",
+    timeZone: getTimezone(),
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -140,6 +170,32 @@ function formatTime(ts) {
   const parts = fmt.formatToParts(date);
   const get = (t) => parts.find((p) => p.type === t)?.value || "";
   return `${get("year")}年${get("month")}月${get("day")}日 ${get("hour")}:${get("minute")}`;
+}
+
+// 计算某时区当前的 UTC 偏移（如 "GMT+8"、"GMT-5"、"GMT+5:30"）
+function tzOffset(iana) {
+  try {
+    const dtf = new Intl.DateTimeFormat("en-US", {
+      timeZone: iana,
+      timeZoneName: "shortOffset",
+    });
+    const parts = dtf.formatToParts(new Date());
+    return parts.find((p) => p.type === "timeZoneName")?.value || "";
+  } catch {
+    return "";
+  }
+}
+
+// 填充时区下拉选项（中文名 + 动态 UTC 偏移）
+function buildTimezoneOptions() {
+  dom.timezoneSelect.innerHTML = "";
+  for (const tz of TIMEZONES) {
+    const opt = document.createElement("option");
+    opt.value = tz.value;
+    const offset = tzOffset(tz.value);
+    opt.textContent = offset ? `${tz.label} · ${offset}` : tz.label;
+    dom.timezoneSelect.appendChild(opt);
+  }
 }
 
 function avatarColor(seed) {
@@ -486,12 +542,6 @@ function renderOnlineUsers(users, count) {
     name.className = "online-name";
     name.textContent = u.nickname || "匿名";
     name.title = u.nickname || "匿名";
-    if (u.isAdmin) {
-      const admin = document.createElement("span");
-      admin.className = "online-admin";
-      admin.textContent = "管理员";
-      name.appendChild(admin);
-    }
     if (Number(u.userId) === meId) {
       const me = document.createElement("span");
       me.className = "online-me";
@@ -572,11 +622,21 @@ function appendMessage(msg, animate) {
 
   const time = document.createElement("span");
   time.className = "msg-time";
+  time.dataset.ts = msg.created_at;
   time.textContent = formatTime(msg.created_at);
   body.appendChild(time);
 
   row.appendChild(body);
   dom.messages.appendChild(row);
+}
+
+// 切换时区后，重新渲染页面上已显示消息的时间
+function refreshMessageTimes() {
+  dom.messages.querySelectorAll(".msg-time").forEach((el) => {
+    if (el.dataset.ts != null) {
+      el.textContent = formatTime(Number(el.dataset.ts));
+    }
+  });
 }
 
 function renderBubble(bubble, type, content, mediaUrl, mediaType) {
@@ -848,6 +908,7 @@ function autoResize() {
 // ========== 设置 ==========
 function openSettings() {
   dom.nicknameInput.value = state.user?.nickname || "";
+  dom.timezoneSelect.value = getTimezone();
   renderSettingsAvatar();
   dom.settingsModal.classList.remove("hidden");
 }
@@ -885,6 +946,10 @@ async function saveSettings() {
       });
       state.user.nickname = res.nickname;
     }
+
+    // 保存时区
+    localStorage.setItem(TZ_KEY, dom.timezoneSelect.value);
+    refreshMessageTimes();
 
     localStorage.setItem(USER_KEY, JSON.stringify(state.user));
     renderMe();
@@ -1010,6 +1075,7 @@ function bindEvents() {
 function init() {
   bindEvents();
   renderEmojiGrid();
+  buildTimezoneOptions();
   setMode("login");
   tryRestoreSession();
 }

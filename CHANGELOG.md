@@ -114,3 +114,14 @@
 #### 组件变化
 - 新增 `Header.astro`、`ChatCta.astro`
 - 重写 `Hero.astro`、`Terminal.astro`、`About.astro`、`Footer.astro`
+
+### 2026-09-01 (聊天室界面调整)
+
+#### 移除角色 tag
+- 在线用户列表移除「管理员」徽章，不显示任何角色 tag
+- 保留「（我）」标记
+
+#### 时区显示功能
+- 消息时间按用户设置的时区显示，默认东八区（Asia/Shanghai 北京时间）
+- 设置弹窗新增「时区」下拉选择（19 个常用时区，中文名 + 动态 UTC 偏移）
+- 时区设置持久化到 localStorage，保存后即时刷新已显示消息时间

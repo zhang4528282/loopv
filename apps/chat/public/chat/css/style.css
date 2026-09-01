@@ -212,7 +212,8 @@ svg {
   font-size: 12px;
 }
 
-.field input {
+.field input,
+.field select {
   width: 100%;
   padding: 11px 14px;
   background: var(--bg-input);
@@ -225,11 +226,17 @@ svg {
   transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
 }
 
+.field select {
+  cursor: pointer;
+  height: 46px;
+}
+
 .field input::placeholder {
   color: #9ca3af;
 }
 
-.field input:focus {
+.field input:focus,
+.field select:focus {
   border-color: var(--accent);
   background: #fff;
   box-shadow: 0 0 0 3px var(--accent-glow);
@@ -413,17 +420,6 @@ svg {
 .online-me {
   color: var(--accent);
   font-size: 12px;
-}
-
-.online-admin {
-  color: var(--accent);
-  font-size: 11px;
-  background: rgba(99, 102, 241, 0.1);
-  border: 1px solid rgba(99, 102, 241, 0.25);
-  padding: 1px 6px;
-  border-radius: 999px;
-  margin-left: 6px;
-  white-space: nowrap;
 }
 
 /* 顶栏「在线」按钮（仅移动端显示） */
