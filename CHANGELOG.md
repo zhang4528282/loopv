@@ -125,3 +125,15 @@
 - 消息时间按用户设置的时区显示，默认东八区（Asia/Shanghai 北京时间）
 - 设置弹窗新增「时区」下拉选择（19 个常用时区，中文名 + 动态 UTC 偏移）
 - 时区设置持久化到 localStorage，保存后即时刷新已显示消息时间
+
+### 2026-09-01 (安全加固)
+
+#### 修复的漏洞
+- **任意文件上传 → 存储型 XSS**：`/api/upload` 增加危险 MIME 黑名单（`text/html`、`image/svg+xml`、`application/octet-stream` 等）+ 危险扩展名黑名单（`.html`、`.svg`、`.js`、`.xml` 等）双重拦截；头像上传拒绝 SVG；`/media/*` 响应加 `X-Content-Type-Options: nosniff`
+- **登录/注册暴力破解**：新增 `RateLimiter` Durable Object，按 IP 限流（10 分钟 5 次失败锁定 15 分钟），登录/注册成功自动清零；锁定期间窗口过期不会绕过（固定保留 lockedUntil）
+- **WebSocket 刷屏**：消息发送 800ms 节流、撤回 300ms 节流；消息内容限 5000 字符
+- **media_url 协议注入**：后端 WS 仅允许 `/media/` 前缀（拒绝 `javascript:` 等协议），INSERT 与广播均使用过滤后的值；前端 file 链接 href 加白名单双保险
+- **CORS 全开**：origin 白名单收窄为 `chat.loopv.net` / `admin.loopv.net` / `localhost` / `127.0.0.1`
+
+#### 额外加固
+- **管理平台**：admin API 仅允许通过 `admin.loopv.net` 域名访问（本地开发 localhost 放行），通过 chat 域名访问管理接口返回 403

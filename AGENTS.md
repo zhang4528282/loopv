@@ -27,9 +27,10 @@ pnpm --filter @loopv/chat build
 
 - **Monorepo**：pnpm workspaces，`apps/portal` 和 `apps/chat` 独立无共享代码
 - **聊天室前端**：`apps/chat/public/` 下分 `chat/`（聊天室）和 `admin/`（管理平台）两个目录，纯 HTML/CSS/JS，由 Worker 的 `[assets]` 配置作为静态资源一并上传，不是独立部署
-- **聊天室后端**：Hono 路由 (`worker.ts`) + Durable Object (`chat-room.ts`)。DO 使用 Hibernation API（`acceptWebSocket`）空闲不计费
-- **chat + admin 共用一个 Worker**：通过 `host` header 区分（`admin.` 前缀），静态资源映射 `/chat/*` 和 `/admin/*`
+- **聊天室后端**：Hono 路由 (`worker.ts`) + Durable Object (`chat-room.ts` WebSocket 广播/认证 + `rate-limiter.ts` 按 IP 登录限流)。DO 使用 Hibernation API（`acceptWebSocket`）空闲不计费
+- **chat + admin 共用一个 Worker**：通过 `host` header 区分（`admin.` 前缀），静态资源映射 `/chat/*` 和 `/admin/*`；admin API 仅允许 admin 域名访问（本地 localhost 放行）
 - **DO 认证状态**：用 `serializeAttachment` 存储每连接用户信息（Hibernation 下内存 Map 会失效，勿用）
+- **安全约束**：上传校验用 `DANGEROUS_TYPES` / `DANGEROUS_EXTS` 黑名单（worker.ts 顶部）；WS 消息 content 限 5000 字符、发送 800ms 节流、`media_url` 仅接受 `/media/` 前缀；CORS 白名单为 chat/admin.loopv.net + localhost
 - **D1 迁移**：不会自动执行。CI 中或首次部署前需手动跑 `wrangler d1 execute loopv-chat-db --file=./migrations/001_init.sql`
 
 ## 数据模型关键约束

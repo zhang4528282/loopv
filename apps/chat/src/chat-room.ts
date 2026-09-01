@@ -9,6 +9,7 @@ interface UserInfo {
 
 export class ChatRoom extends DurableObject {
   private env: Env;
+  private lastSendAt = new Map<number, number>(); // userId -> 毫秒时间戳
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -134,6 +135,27 @@ export class ChatRoom extends DurableObject {
       return;
     }
 
+    // 发送节流：同一用户 800ms 内最多发 1 条
+    const nowMs = Date.now();
+    const last = this.lastSendAt.get(user.userId) || 0;
+    if (nowMs - last < 800) {
+      ws.send(JSON.stringify({ type: "error", message: "发送太快，请稍候" }));
+      return;
+    }
+    this.lastSendAt.set(user.userId, nowMs);
+
+    // 内容长度限制
+    if (typeof data.content === "string" && data.content.length > 5000) {
+      ws.send(JSON.stringify({ type: "error", message: "消息内容过长" }));
+      return;
+    }
+
+    // media_url 白名单：只允许本站 /media/ 路径，防止 javascript: 等协议注入
+    let mediaUrl: string | null = null;
+    if (typeof data.media_url === "string" && data.media_url.startsWith("/media/")) {
+      mediaUrl = data.media_url;
+    }
+
     const now = Math.floor(Date.now() / 1000);
     const type = ["text", "image", "video", "audio", "emoji", "file"].includes(
       data.msg_type
@@ -151,7 +173,7 @@ export class ChatRoom extends DurableObject {
         user.avatarUrl,
         type,
         data.content || "",
-        data.media_url || null,
+        mediaUrl,
         data.media_type || null,
         now
       )
@@ -167,7 +189,7 @@ export class ChatRoom extends DurableObject {
       avatar_url: user.avatarUrl,
       msg_type: type,
       content: data.content || "",
-      media_url: data.media_url || null,
+      media_url: mediaUrl,
       media_type: data.media_type || null,
       created_at: now,
     });
@@ -180,6 +202,15 @@ export class ChatRoom extends DurableObject {
       ws.send(JSON.stringify({ type: "error", message: "请先登录" }));
       return;
     }
+
+    // 撤回节流：同一用户 300ms 内最多撤回 1 条
+    const nowMs = Date.now();
+    const last = this.lastSendAt.get(user.userId) || 0;
+    if (nowMs - last < 300) {
+      ws.send(JSON.stringify({ type: "error", message: "操作太快，请稍候" }));
+      return;
+    }
+    this.lastSendAt.set(user.userId, nowMs);
 
     const msg = await this.env.DB.prepare(
       `SELECT user_id, deleted FROM messages WHERE id = ?1`

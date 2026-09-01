@@ -12,9 +12,17 @@ binding = "ASSETS"
 name = "CHAT_ROOM"
 class_name = "ChatRoom"
 
+[[durable_objects.bindings]]
+name = "RATE_LIMITER"
+class_name = "RateLimiter"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["ChatRoom"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["RateLimiter"]
 
 # D1 数据库绑定
 [[d1_databases]]

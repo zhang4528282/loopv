@@ -691,7 +691,8 @@ function renderBubble(bubble, type, content, mediaUrl, mediaType) {
     case "file": {
       const a = document.createElement("a");
       a.className = "msg-file";
-      a.href = mediaUrl || "#";
+      a.href =
+        mediaUrl && mediaUrl.startsWith("/media/") ? mediaUrl : "#";
       a.target = "_blank";
       a.rel = "noopener";
       a.innerHTML =

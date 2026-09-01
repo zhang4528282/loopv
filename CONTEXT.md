@@ -24,6 +24,7 @@ apps/
     ├── src/
     │   ├── worker.ts       Hono HTTP 路由 + API（含 chat + admin 两套）
     │   ├── chat-room.ts    Durable Object (WebSocket 广播 + 认证)
+    │   ├── rate-limiter.ts Durable Object (按 IP 登录/注册限流，防暴力破解)
     │   └── auth.ts         密码哈希 + session 工具
     ├── public/
     │   ├── chat/           聊天室前端 (原生 HTML/CSS/JS)
@@ -74,6 +75,8 @@ apps/
 4. **chat + admin 共用一个 Worker**：通过 `host` header 区分（`admin.` 前缀），复用 D1/R2 绑定
 5. **门户反 AI 感设计**：低饱和深墨绿单强调色（`#2e5d4f`）+ 暖灰中性底，Outfit 字体 + 非对称布局，浅色纸感终端，刻意避免 AI 紫渐变、模板化三段式等 AI 生成痕迹
 6. **Monorepo**：pnpm workspaces 管理多子站点，共享依赖
+7. **按 IP 限流用 Durable Object**：登录/注册暴力破解防护用独立 `RateLimiter` DO（DO storage 持久化），不用 D1 建表——避免手动 SQL migration，DO 的 `new_sqlite_classes` migration 随 wrangler deploy 自动生效
+8. **上传安全策略**：R2 上传走 MIME + 扩展名双重黑名单，危险类型（html/svg/js/xml 等）直接拒绝；媒体响应加 `nosniff`；WebSocket 消息的 `media_url` 仅接受 `/media/` 前缀
 
 ## Cloudflare 资源
 

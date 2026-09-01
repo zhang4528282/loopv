@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { prettyJSON } from "hono/pretty-json";
 import { ChatRoom } from "./chat-room";
+import { RateLimiter } from "./rate-limiter";
 import {
   generateSalt,
   generateToken,
@@ -10,10 +11,11 @@ import {
   SESSION_TTL,
 } from "./auth";
 
-export { ChatRoom };
+export { ChatRoom, RateLimiter };
 
 type Bindings = {
   CHAT_ROOM: DurableObjectNamespace<ChatRoom>;
+  RATE_LIMITER: DurableObjectNamespace<RateLimiter>;
   DB: D1Database;
   MEDIA_BUCKET: R2Bucket;
   ASSETS: Fetcher;
@@ -33,9 +35,41 @@ interface AuthUser {
   is_test: boolean;
 }
 
+// 危险 MIME 类型（可执行脚本，禁止上传）
+const DANGEROUS_TYPES = new Set([
+  "text/html", "text/xml", "application/xml", "application/xhtml+xml",
+  "text/javascript", "application/javascript", "application/x-javascript",
+  "image/svg+xml", "application/x-shockwave-flash", "application/octet-stream",
+]);
+// 危险扩展名（双保险：即使伪造 MIME 也拦下）
+const DANGEROUS_EXTS = new Set([
+  "html", "htm", "svg", "js", "mjs", "xml", "xhtml", "swf",
+  "php", "shtml", "cgi", "jsp", "asp", "aspx",
+]);
+
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
-app.use("*", cors({ origin: "*", allowHeaders: ["Content-Type", "Authorization"] }));
+app.use(
+  "*",
+  cors({
+    origin: (origin) => {
+      if (!origin) return "*";
+      try {
+        const host = new URL(origin).host;
+        if (
+          host === "chat.loopv.net" ||
+          host === "admin.loopv.net" ||
+          host.startsWith("localhost") ||
+          host.startsWith("127.0.0.1")
+        ) {
+          return origin;
+        }
+      } catch {}
+      return null;
+    },
+    allowHeaders: ["Content-Type", "Authorization"],
+  })
+);
 app.use("*", prettyJSON());
 
 // ===================== 工具函数 =====================
@@ -49,6 +83,26 @@ function getTokenFromHeader(c: { req: { header: (name: string) => string | undef
   const auth = c.req.header("Authorization") || "";
   if (auth.startsWith("Bearer ")) return auth.slice(7);
   return null;
+}
+
+function getClientIp(c: any): string {
+  return (
+    c.req.header("CF-Connecting-IP") ||
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    "unknown"
+  );
+}
+
+async function rateLimit(
+  c: any,
+  action: "check" | "hit" | "reset"
+): Promise<{ allowed: boolean; retryAfter?: number }> {
+  const id = c.env.RATE_LIMITER.idFromName(getClientIp(c));
+  const stub = c.env.RATE_LIMITER.get(id);
+  const res = await stub.fetch(
+    `https://internal/${action}?ip=${encodeURIComponent(getClientIp(c))}`
+  );
+  return res.json();
 }
 
 async function getUserByToken(db: D1Database, token: string): Promise<AuthUser | null> {
@@ -94,6 +148,13 @@ async function authMiddleware(c: any, next: any) {
 
 // 管理员中间件
 async function adminMiddleware(c: any, next: any) {
+  // 仅允许通过 admin.loopv.net 访问管理 API（本地开发放行）
+  const host = c.req.header("host") || "";
+  const isDev =
+    host.startsWith("localhost") || host.startsWith("127.0.0.1");
+  if (!isDev && !host.startsWith("admin.")) {
+    return c.json({ error: "无权限" }, 403);
+  }
   const user = c.get("user");
   if (!user || !user.is_admin) {
     return c.json({ error: "无权限" }, 403);
@@ -119,6 +180,11 @@ app.get("/ws", async (c) => {
 
 // 注册
 app.post("/api/auth/register", async (c) => {
+  const limit = await rateLimit(c, "check");
+  if (!limit.allowed) {
+    return c.json({ error: `尝试次数过多，请 ${limit.retryAfter} 秒后再试` }, 429);
+  }
+
   const body = await c.req.json();
   const username = (body.username || "").trim();
   const password = body.password || "";
@@ -144,6 +210,7 @@ app.post("/api/auth/register", async (c) => {
     .bind(username)
     .first();
   if (existing) {
+    await rateLimit(c, "hit");
     return c.json({ error: "用户名已被占用" }, 409);
   }
 
@@ -163,6 +230,8 @@ app.post("/api/auth/register", async (c) => {
   const userId = result.meta.last_row_id ?? 0;
   const token = await createSession(c.env.DB, userId as number);
 
+  await rateLimit(c, "reset");
+
   return c.json({
     token,
     user: { id: userId, username, nickname, avatar_url: null, is_admin: isAdmin === 1 },
@@ -179,6 +248,11 @@ app.post("/api/auth/login", async (c) => {
     return c.json({ error: "用户名和密码不能为空" }, 400);
   }
 
+  const limit = await rateLimit(c, "check");
+  if (!limit.allowed) {
+    return c.json({ error: `尝试次数过多，请 ${limit.retryAfter} 秒后再试` }, 429);
+  }
+
   const user = await c.env.DB.prepare(
     `SELECT id, username, password_hash, salt, nickname, avatar_url, is_admin, banned FROM users WHERE username = ?1`
   )
@@ -186,6 +260,7 @@ app.post("/api/auth/login", async (c) => {
     .first();
 
   if (!user) {
+    await rateLimit(c, "hit");
     return c.json({ error: "用户名或密码错误" }, 401);
   }
 
@@ -195,10 +270,13 @@ app.post("/api/auth/login", async (c) => {
 
   const passwordHash = await hashPassword(password, user.salt as string);
   if (!constantTimeEqual(passwordHash, user.password_hash as string)) {
+    await rateLimit(c, "hit");
     return c.json({ error: "用户名或密码错误" }, 401);
   }
 
   const token = await createSession(c.env.DB, user.id as number);
+
+  await rateLimit(c, "reset");
 
   return c.json({
     token,
@@ -276,12 +354,15 @@ app.post("/api/user/avatar", async (c) => {
     return c.json({ error: "文件过大" }, 413);
   }
 
-  // 仅允许图片
-  if (!(file as File).type.startsWith("image/")) {
+  // 仅允许图片（拒绝 SVG，防止 XSS）
+  const avatarType = ((file as File).type || "").toLowerCase();
+  if (!avatarType.startsWith("image/") || avatarType === "image/svg+xml") {
     return c.json({ error: "头像必须是图片" }, 400);
   }
-
   const ext = (file as File).name.split(".").pop()?.toLowerCase() || "png";
+  if (ext === "svg") {
+    return c.json({ error: "头像必须是图片" }, 400);
+  }
   const safeName = `avatar-${user.id}-${Date.now()}.${ext}`;
 
   await c.env.MEDIA_BUCKET.put(safeName, (file as File).stream(), {
@@ -369,7 +450,14 @@ app.post("/api/upload", async (c) => {
     return c.json({ error: "文件过大" }, 413);
   }
 
+  const contentType = ((file as File).type || "").toLowerCase();
+  if (DANGEROUS_TYPES.has(contentType)) {
+    return c.json({ error: "不支持的文件类型" }, 400);
+  }
   const ext = (file as File).name.split(".").pop()?.toLowerCase() || "bin";
+  if (DANGEROUS_EXTS.has(ext)) {
+    return c.json({ error: "不支持的文件类型" }, 400);
+  }
   const safeName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
 
   await c.env.MEDIA_BUCKET.put(safeName, (file as File).stream(), {
@@ -395,6 +483,7 @@ app.get("/media/:filename", async (c) => {
   const headers = new Headers();
   headers.set("Content-Type", object.httpMetadata?.contentType || "application/octet-stream");
   headers.set("Cache-Control", "public, max-age=31536000, immutable");
+  headers.set("X-Content-Type-Options", "nosniff");
 
   return new Response(object.body, { headers });
 });
