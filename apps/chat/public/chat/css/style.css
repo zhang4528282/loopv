@@ -1283,9 +1283,6 @@ svg {
   .room-badge {
     display: none;
   }
-  .conn-dot {
-    display: none;
-  }
   .me-info {
     padding: 3px;
   }
