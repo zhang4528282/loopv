@@ -54,6 +54,13 @@ export class ChatRoom extends DurableObject {
           }
         }
         this.broadcastOnlineUsers();
+        // 广播资料更新事件，让所有在线客户端即时刷新该用户的历史消息显示
+        this.broadcast({
+          type: "profile_updated",
+          userId,
+          nickname,
+          avatarUrl,
+        });
       } catch (e) {
         console.error("profile-update error:", e);
       }

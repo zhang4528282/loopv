@@ -143,3 +143,5 @@
 #### 修复
 - **历史消息资料不同步**：修改昵称/头像后，同步 `UPDATE messages` 表中该用户的历史消息快照（nickname / avatar_url），历史消息即时显示最新资料
 - **在线连接资料缓存**：修改资料后通过内部 `/profile-update` 通知 DO，刷新该用户所有在线 WebSocket 连接的 `serializeAttachment`，新消息与在线列表即时显示最新昵称/头像，无需重新连接
+- **前端已渲染消息刷新**：消息行记录 `data-user-id`，新增 `refreshMessagesOfUser()` 局部更新该用户所有消息的昵称/头像；保存资料成功后立即刷新自己页面，DO 广播 `profile_updated` 事件让所有在线客户端同步更新
+- **存量数据回填**：修复上线前的历史消息快照仍为旧资料，手动执行 D1 SQL 将 `messages` 表快照对齐到 `users` 表当前值

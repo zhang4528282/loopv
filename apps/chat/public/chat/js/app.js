@@ -487,6 +487,10 @@ function handleWsMessage(data) {
       renderOnlineUsers(data.users || [], data.count);
       break;
 
+    case "profile_updated":
+      refreshMessagesOfUser(data.userId, data.nickname, data.avatarUrl);
+      break;
+
     case "error":
       toast(data.message || "操作失败", "error");
       break;
@@ -578,6 +582,7 @@ function appendMessage(msg, animate) {
   const row = document.createElement("div");
   row.className = `msg-row${isOwn ? " own" : ""}`;
   row.dataset.id = msg.id;
+  row.dataset.userId = msg.user_id;
   if (!animate) row.style.animation = "none";
 
   // 头像
@@ -628,6 +633,19 @@ function appendMessage(msg, animate) {
 
   row.appendChild(body);
   dom.messages.appendChild(row);
+}
+
+// 更新页面上某用户所有消息的昵称/头像（资料修改后即时刷新，无需刷新页面）
+function refreshMessagesOfUser(userId, nickname, avatarUrl) {
+  dom.messages.querySelectorAll(`.msg-row[data-user-id="${userId}"]`).forEach((row) => {
+    const nick = row.querySelector(".msg-nick");
+    if (nick) {
+      nick.textContent = nickname;
+      nick.title = nickname;
+    }
+    const avatar = row.querySelector(".msg-avatar");
+    if (avatar) fillAvatar(avatar, nickname, avatarUrl);
+  });
 }
 
 // 切换时区后，重新渲染页面上已显示消息的时间
@@ -954,6 +972,8 @@ async function saveSettings() {
 
     localStorage.setItem(USER_KEY, JSON.stringify(state.user));
     renderMe();
+    // 刷新页面上该用户历史消息的昵称/头像
+    refreshMessagesOfUser(state.user.id, state.user.nickname, state.user.avatar_url || null);
     dom.settingsModal.classList.add("hidden");
     dom.avatarInput.value = "";
     toast("设置已保存", "success");
