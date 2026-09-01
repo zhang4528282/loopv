@@ -1,0 +1,920 @@
+// ============================================================
+// LoopV Chat — 前端逻辑（vanilla JS）
+// ============================================================
+
+"use strict";
+
+// ========== 常量 ==========
+const TOKEN_KEY = "loopv_chat_token";
+const USER_KEY = "loopv_chat_user";
+const MAX_HISTORY = 50;
+
+const EMOJIS = [
+  "😀", "😂", "🤣", "😍", "🥰", "😘", "😜", "🤪", "😎", "🤩", "😤", "😭", "😱", "🤯", "🥳", "🫠",
+  "👍", "👎", "👏", "🙌", "🤝", "💪", "🫶", "🔥", "💯", "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "💔",
+  "🐱", "🐶", "🐼", "🦊", "🐸", "🐵", "🦄", "🐙", "🌸", "🌺", "🌻", "🌙", "⭐", "🌈", "🍕", "🍔", "🍣", "🎉", "🎸", "🚀",
+];
+
+const AVATAR_COLORS = [
+  "#6366f1", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981",
+  "#06b6d4", "#f97316", "#84cc16", "#14b8a6", "#3b82f6", "#a855f7",
+];
+
+// ========== 状态 ==========
+const state = {
+  token: null,
+  user: null, // { id, username, nickname, avatar_url, is_admin }
+  ws: null,
+  reconnectTimer: null,
+  reconnectDelay: 1500,
+  intentionalClose: false,
+  pendingFile: null, // { file, type }
+  pendingAvatar: null, // File | null
+  mode: "login", // login | register
+};
+
+// ========== DOM 引用 ==========
+const $ = (sel) => document.querySelector(sel);
+
+const dom = {
+  // 认证
+  authView: $("#auth-view"),
+  authForm: $("#auth-form"),
+  authUsername: $("#auth-username"),
+  authNickname: $("#auth-nickname"),
+  authPassword: $("#auth-password"),
+  authError: $("#auth-error"),
+  authSubmit: $("#auth-submit"),
+  nicknameField: $("#nickname-field"),
+  tabLogin: $("#tab-login"),
+  tabRegister: $("#tab-register"),
+
+  // 聊天
+  chatView: $("#chat-view"),
+  messages: $("#messages"),
+  messagesEmpty: $("#messages-empty"),
+  roomName: $("#room-name"),
+  meAvatar: $("#me-avatar"),
+  meNickname: $("#me-nickname"),
+  connDot: $("#conn-dot"),
+
+  // 输入
+  msgInput: $("#msg-input"),
+  btnSend: $("#btn-send"),
+  btnUpload: $("#btn-upload"),
+  fileInput: $("#file-input"),
+  btnEmoji: $("#btn-emoji"),
+  emojiPicker: $("#emoji-picker"),
+  emojiGrid: $("#emoji-grid"),
+  uploadPreview: $("#upload-preview"),
+  uploadPreviewImg: $("#upload-preview-img"),
+  uploadPreviewName: $("#upload-preview-name"),
+  btnClearUpload: $("#btn-clear-upload"),
+
+  // 弹窗
+  mediaPreview: $("#media-preview"),
+  mediaBackdrop: $("#media-backdrop"),
+  mediaContent: $("#media-content"),
+  mediaClose: $("#media-close"),
+  settingsModal: $("#settings-modal"),
+  btnSettings: $("#btn-settings"),
+  btnCloseSettings: $("#btn-close-settings"),
+  nicknameInput: $("#nickname-input"),
+  btnSaveSettings: $("#btn-save-settings"),
+  settingsAvatarPreview: $("#settings-avatar-preview"),
+  btnAvatarUpload: $("#btn-avatar-upload"),
+  avatarInput: $("#avatar-input"),
+
+  // 其他
+  btnLogout: $("#btn-logout"),
+  toast: $("#toast"),
+};
+
+// ========== 工具函数 ==========
+function api(path, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  if (state.token) headers["Authorization"] = `Bearer ${state.token}`;
+  if (options.body && !(options.body instanceof FormData) && typeof options.body !== "string") {
+    headers["Content-Type"] = "application/json";
+    options.body = JSON.stringify(options.body);
+  }
+  return fetch(path, { ...options, headers }).then(async (res) => {
+    let data = null;
+    try {
+      data = await res.json();
+    } catch {
+      /* 无 JSON 响应 */
+    }
+    if (!res.ok) {
+      const err = new Error((data && data.error) || `请求失败 (${res.status})`);
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  });
+}
+
+// 北京时间格式化：秒级时间戳 → "2026年08月07日 14:30"
+function formatTime(ts) {
+  const date = new Date((ts || Math.floor(Date.now() / 1000)) * 1000);
+  const fmt = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  const parts = fmt.formatToParts(date);
+  const get = (t) => parts.find((p) => p.type === t)?.value || "";
+  return `${get("year")}年${get("month")}月${get("day")}日 ${get("hour")}:${get("minute")}`;
+}
+
+function avatarColor(seed) {
+  let hash = 0;
+  const s = String(seed || "x");
+  for (let i = 0; i < s.length; i++) {
+    hash = s.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+// 将头像内容（图片或昵称首字）填充到已有元素
+function fillAvatar(el, nickname, url) {
+  el.innerHTML = "";
+  const name = nickname || "?";
+  if (url) {
+    const img = document.createElement("img");
+    img.src = url;
+    img.alt = name;
+    img.loading = "lazy";
+    img.onerror = () => {
+      img.remove();
+      el.textContent = name.charAt(0).toUpperCase();
+      el.style.background = avatarColor(name);
+    };
+    el.appendChild(img);
+    el.style.background = "";
+  } else {
+    el.textContent = name.charAt(0).toUpperCase();
+    el.style.background = avatarColor(name);
+  }
+}
+
+// 创建头像元素（有图片显示图片，否则昵称首字彩色圆底）
+function createAvatar(nickname, url, extraClass) {
+  const el = document.createElement("div");
+  el.className = extraClass || "msg-avatar";
+  fillAvatar(el, nickname, url);
+  return el;
+}
+
+function toast(message, type = "info", duration = 2600) {
+  dom.toast.textContent = message;
+  dom.toast.className = "toast show" + (type === "error" ? " error" : type === "success" ? " success" : "");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => {
+    dom.toast.classList.remove("show");
+  }, duration);
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+// 判断内容是否纯表情（用于大字号表情消息）
+function isEmojiOnly(text) {
+  const trimmed = String(text || "").trim();
+  if (!trimmed || trimmed.length > 8) return false;
+  if (/[0-9A-Za-z\u4e00-\u9fff]/.test(trimmed)) return false;
+  return /\p{Extended_Pictographic}|\p{Emoji_Presentation}/u.test(trimmed);
+}
+
+// ========== 认证 ==========
+function setMode(mode) {
+  state.mode = mode;
+  const isRegister = mode === "register";
+  dom.tabLogin.classList.toggle("active", !isRegister);
+  dom.tabRegister.classList.toggle("active", isRegister);
+  dom.nicknameField.classList.toggle("hidden", !isRegister);
+  dom.authSubmit.textContent = isRegister ? "注 册" : "登 录";
+  dom.authError.textContent = "";
+  dom.authPassword.setAttribute("autocomplete", isRegister ? "new-password" : "current-password");
+}
+
+function showAuth() {
+  dom.chatView.classList.add("hidden");
+  dom.authView.classList.remove("hidden");
+  setMode(state.mode);
+}
+
+function showChat() {
+  dom.authView.classList.add("hidden");
+  dom.chatView.classList.remove("hidden");
+  dom.roomName.textContent = "general";
+  renderMe();
+}
+
+function renderMe() {
+  const user = state.user;
+  if (!user) return;
+  dom.meNickname.textContent = user.nickname || user.username;
+  dom.meNickname.title = user.nickname || user.username;
+  fillAvatar(dom.meAvatar, user.nickname || user.username, user.avatar_url);
+}
+
+function saveSession(token, user) {
+  state.token = token;
+  state.user = user;
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
+function clearSession() {
+  state.token = null;
+  state.user = null;
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+}
+
+async function handleAuthSubmit(e) {
+  e.preventDefault();
+  const username = dom.authUsername.value.trim();
+  const password = dom.authPassword.value;
+  const nickname = dom.authNickname.value.trim();
+
+  dom.authError.textContent = "";
+  if (!username || !password) {
+    dom.authError.textContent = "用户名和密码不能为空";
+    return;
+  }
+
+  dom.authSubmit.disabled = true;
+  try {
+    const endpoint = state.mode === "register" ? "/api/auth/register" : "/api/auth/login";
+    const body = state.mode === "register"
+      ? { username, password, nickname: nickname || username }
+      : { username, password };
+
+    const data = await api(endpoint, { method: "POST", body });
+    saveSession(data.token, data.user);
+    dom.authForm.reset();
+    dom.authSubmit.disabled = false;
+    enterChat();
+  } catch (err) {
+    dom.authError.textContent = err.message;
+    dom.authSubmit.disabled = false;
+  }
+}
+
+async function handleLogout() {
+  try {
+    await api("/api/auth/logout", { method: "POST" });
+  } catch {
+    /* 忽略登出接口错误 */
+  }
+  state.intentionalClose = true;
+  if (state.ws) state.ws.close();
+  clearSession();
+  showAuth();
+}
+
+// 尝试恢复登录态
+async function tryRestoreSession() {
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) {
+    showAuth();
+    return;
+  }
+  state.token = token;
+  try {
+    const data = await api("/api/auth/me");
+    if (data && data.user) {
+      state.user = data.user;
+      localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+      enterChat();
+      return;
+    }
+  } catch {
+    /* token 失效 */
+  }
+  clearSession();
+  showAuth();
+}
+
+function enterChat() {
+  showChat();
+  loadHistory();
+  connectWs();
+}
+
+// ========== 历史消息 ==========
+async function loadHistory() {
+  try {
+    const data = await api(`/api/history?limit=${MAX_HISTORY}`);
+    if (data.messages && data.messages.length) {
+      dom.messagesEmpty.classList.add("hidden");
+      for (const msg of data.messages) {
+        appendMessage(msg, false);
+      }
+    }
+    scrollToBottom(true);
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+// ========== WebSocket ==========
+function connectWs() {
+  if (!state.token) return;
+
+  clearTimeout(state.reconnectTimer);
+  const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+  const wsUrl = `${protocol}//${location.host}/ws`;
+
+  setConn("connecting");
+  const ws = new WebSocket(wsUrl);
+  state.ws = ws;
+
+  ws.onopen = () => {
+    // 连接后立即发送认证
+    ws.send(JSON.stringify({ type: "auth", token: state.token }));
+  };
+
+  ws.onmessage = (e) => {
+    let data;
+    try {
+      data = JSON.parse(e.data);
+    } catch {
+      return;
+    }
+    handleWsMessage(data);
+  };
+
+  ws.onclose = () => {
+    if (state.ws !== ws) return;
+    if (state.intentionalClose || !state.token) {
+      setConn("offline");
+      return;
+    }
+    setConn("offline");
+    scheduleReconnect();
+  };
+
+  ws.onerror = () => {
+    ws.close();
+  };
+}
+
+function handleWsMessage(data) {
+  switch (data.type) {
+    case "auth_ok":
+      setConn("online");
+      state.reconnectDelay = 1500;
+      // 以服务端返回为准刷新昵称/头像
+      if (data.nickname || data.avatarUrl) {
+        const fresh = {
+          ...(state.user || {}),
+          nickname: data.nickname || state.user?.nickname,
+          avatar_url: data.avatarUrl || state.user?.avatar_url || null,
+        };
+        state.user = fresh;
+        localStorage.setItem(USER_KEY, JSON.stringify(fresh));
+        renderMe();
+      }
+      break;
+
+    case "auth_error":
+      // token 失效，强制重新登录
+      toast(data.message || "登录已失效，请重新登录", "error");
+      state.intentionalClose = true;
+      if (state.ws) state.ws.close();
+      clearSession();
+      showAuth();
+      break;
+
+    case "message":
+      dom.messagesEmpty.classList.add("hidden");
+      appendMessage(data, true);
+      scrollToBottom();
+      break;
+
+    case "delete":
+      markDeleted(data.id);
+      break;
+
+    case "error":
+      toast(data.message || "操作失败", "error");
+      break;
+
+    case "pong":
+      // 心跳响应，无需处理
+      break;
+
+    default:
+      break;
+  }
+}
+
+function setConn(status) {
+  dom.connDot.classList.toggle("online", status === "online");
+  dom.connDot.classList.toggle("offline", status === "offline");
+  dom.connDot.title =
+    status === "online" ? "已连接" : status === "offline" ? "连接断开" : "连接中…";
+}
+
+function scheduleReconnect() {
+  clearTimeout(state.reconnectTimer);
+  state.reconnectTimer = setTimeout(() => {
+    if (state.token) connectWs();
+  }, state.reconnectDelay);
+  state.reconnectDelay = Math.min(state.reconnectDelay * 2, 15000);
+}
+
+// ========== 消息渲染 ==========
+function appendMessage(msg, animate) {
+  const type = msg.msg_type || msg.type || "text";
+  const content = msg.content || "";
+  const mediaUrl = msg.media_url || null;
+  const mediaType = msg.media_type || null;
+  const nickname = msg.nickname || "匿名";
+  const avatarUrl = msg.avatar_url || null;
+  const deleted = msg.deleted === 1 || msg.deleted === true;
+  const isOwn = Number(msg.user_id) === Number(state.user?.id);
+
+  const row = document.createElement("div");
+  row.className = `msg-row${isOwn ? " own" : ""}`;
+  row.dataset.id = msg.id;
+  if (!animate) row.style.animation = "none";
+
+  // 头像
+  row.appendChild(createAvatar(nickname, avatarUrl));
+
+  // 消息体
+  const body = document.createElement("div");
+  body.className = "msg-body";
+
+  const meta = document.createElement("div");
+  meta.className = "msg-meta";
+  const nick = document.createElement("span");
+  nick.className = "msg-nick";
+  nick.textContent = nickname;
+  nick.title = nickname;
+  meta.appendChild(nick);
+  if (isOwn) {
+    const actions = document.createElement("div");
+    actions.className = "msg-actions";
+    if (!deleted) {
+      const delBtn = document.createElement("button");
+      delBtn.className = "btn-delete";
+      delBtn.textContent = "撤回";
+      delBtn.title = "撤回此消息";
+      delBtn.onclick = () => deleteMessage(msg.id);
+      actions.appendChild(delBtn);
+    }
+    meta.appendChild(actions);
+  }
+  body.appendChild(meta);
+
+  const bubble = document.createElement("div");
+  bubble.className = "msg-bubble";
+
+  if (deleted) {
+    bubble.classList.add("deleted");
+    bubble.textContent = "消息已撤回";
+  } else {
+    renderBubble(bubble, type, content, mediaUrl, mediaType);
+  }
+  body.appendChild(bubble);
+
+  const time = document.createElement("span");
+  time.className = "msg-time";
+  time.textContent = formatTime(msg.created_at);
+  body.appendChild(time);
+
+  row.appendChild(body);
+  dom.messages.appendChild(row);
+}
+
+function renderBubble(bubble, type, content, mediaUrl, mediaType) {
+  switch (type) {
+    case "text":
+      bubble.textContent = content;
+      break;
+
+    case "emoji":
+      bubble.classList.add("emoji-bubble");
+      bubble.textContent = content;
+      break;
+
+    case "image":
+      if (mediaUrl) {
+        const img = document.createElement("img");
+        img.className = "msg-media";
+        img.src = mediaUrl;
+        img.alt = "图片";
+        img.loading = "lazy";
+        img.onclick = () => openPreview("image", mediaUrl);
+        bubble.appendChild(img);
+      }
+      appendCaption(bubble, content);
+      break;
+
+    case "video":
+      if (mediaUrl) {
+        const vid = document.createElement("video");
+        vid.className = "msg-media";
+        vid.src = mediaUrl;
+        vid.controls = true;
+        vid.preload = "metadata";
+        vid.playsInline = true;
+        bubble.appendChild(vid);
+      }
+      appendCaption(bubble, content);
+      break;
+
+    case "audio":
+      if (mediaUrl) {
+        const aud = document.createElement("audio");
+        aud.className = "msg-media";
+        aud.src = mediaUrl;
+        aud.controls = true;
+        aud.preload = "metadata";
+        bubble.appendChild(aud);
+      }
+      appendCaption(bubble, content);
+      break;
+
+    case "file": {
+      const a = document.createElement("a");
+      a.className = "msg-file";
+      a.href = mediaUrl || "#";
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.innerHTML =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>';
+      const span = document.createElement("span");
+      span.textContent = content || (mediaType ? `文件 (${mediaType})` : "文件");
+      a.appendChild(span);
+      bubble.appendChild(a);
+      break;
+    }
+
+    default:
+      bubble.textContent = content || "[未知消息]";
+  }
+}
+
+function appendCaption(bubble, content) {
+  if (content) {
+    const p = document.createElement("div");
+    p.className = "media-caption";
+    p.textContent = content;
+    bubble.appendChild(p);
+  }
+}
+
+function markDeleted(id) {
+  const row = dom.messages.querySelector(`.msg-row[data-id="${id}"]`);
+  if (!row) return;
+  const bubble = row.querySelector(".msg-bubble");
+  if (bubble) {
+    bubble.className = "msg-bubble deleted";
+    bubble.textContent = "消息已撤回";
+  }
+  const actions = row.querySelector(".msg-actions");
+  if (actions) actions.remove();
+}
+
+function scrollToBottom(force) {
+  requestAnimationFrame(() => {
+    if (force) {
+      dom.messages.scrollTop = dom.messages.scrollHeight;
+      return;
+    }
+    // 用户靠近底部时自动跟随
+    const nearBottom =
+      dom.messages.scrollHeight - dom.messages.scrollTop - dom.messages.clientHeight < 140;
+    if (nearBottom) dom.messages.scrollTop = dom.messages.scrollHeight;
+  });
+}
+
+// ========== 发送消息 ==========
+function sendMessage(type, content, mediaUrl, mediaType) {
+  const payload = { type: "message", msg_type: type, content: content || "" };
+  if (mediaUrl) payload.media_url = mediaUrl;
+  if (mediaType) payload.media_type = mediaType;
+
+  if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+    state.ws.send(JSON.stringify(payload));
+    return true;
+  }
+  return false;
+}
+
+async function handleSend() {
+  // 有待发送文件
+  if (state.pendingFile) {
+    await sendPendingFile();
+    return;
+  }
+
+  const text = dom.msgInput.value.trim();
+  if (!text) return;
+
+  // 纯表情 → 大字号表情消息
+  const type = isEmojiOnly(text) ? "emoji" : "text";
+  const ok = sendMessage(type, text);
+
+  if (ok) {
+    dom.msgInput.value = "";
+    autoResize();
+  } else {
+    toast("连接已断开，正在重连…", "error");
+  }
+}
+
+// ========== 文件上传 ==========
+function handleFileSelected(file) {
+  if (!file) return;
+  const type = file.type.startsWith("image/")
+    ? "image"
+    : file.type.startsWith("video/")
+      ? "video"
+      : file.type.startsWith("audio/")
+        ? "audio"
+        : null;
+
+  if (!type) {
+    toast("仅支持图片、视频、音频文件", "error");
+    return;
+  }
+
+  state.pendingFile = { file, type };
+
+  if (type === "image") {
+    dom.uploadPreviewImg.src = URL.createObjectURL(file);
+    dom.uploadPreviewImg.classList.remove("hidden");
+  } else {
+    dom.uploadPreviewImg.classList.add("hidden");
+  }
+  dom.uploadPreviewName.textContent = file.name;
+  dom.uploadPreview.classList.remove("hidden");
+}
+
+function clearPendingFile() {
+  state.pendingFile = null;
+  dom.uploadPreview.classList.add("hidden");
+  dom.uploadPreviewImg.src = "";
+  dom.uploadPreviewName.textContent = "";
+  dom.fileInput.value = "";
+}
+
+async function sendPendingFile() {
+  if (!state.pendingFile) return;
+  const { file, type } = state.pendingFile;
+
+  try {
+    toast("上传中…");
+    const formData = new FormData();
+    formData.append("file", file);
+    const uploaded = await api("/api/upload", { method: "POST", body: formData });
+
+    sendMessage(type, dom.msgInput.value.trim(), uploaded.url, uploaded.contentType);
+    dom.msgInput.value = "";
+    autoResize();
+    clearPendingFile();
+  } catch (err) {
+    toast(err.message || "上传失败", "error");
+  }
+}
+
+// ========== 撤回 ==========
+async function deleteMessage(id) {
+  if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+    state.ws.send(JSON.stringify({ type: "delete", id }));
+    return;
+  }
+  // HTTP fallback
+  try {
+    await api(`/api/messages/${id}/delete`, { method: "POST" });
+    markDeleted(id);
+  } catch (err) {
+    toast(err.message || "撤回失败", "error");
+  }
+}
+
+// ========== 媒体预览 ==========
+function openPreview(type, url) {
+  dom.mediaContent.innerHTML = "";
+  if (type === "image") {
+    const img = document.createElement("img");
+    img.src = url;
+    img.alt = "图片预览";
+    dom.mediaContent.appendChild(img);
+  } else if (type === "video") {
+    const vid = document.createElement("video");
+    vid.src = url;
+    vid.controls = true;
+    vid.autoplay = true;
+    vid.playsInline = true;
+    dom.mediaContent.appendChild(vid);
+  }
+  dom.mediaPreview.classList.remove("hidden");
+}
+
+function closePreview() {
+  dom.mediaPreview.classList.add("hidden");
+  dom.mediaContent.innerHTML = "";
+}
+
+// ========== Emoji 选择器 ==========
+function renderEmojiGrid() {
+  dom.emojiGrid.innerHTML = "";
+  for (const emoji of EMOJIS) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = emoji;
+    btn.onclick = () => {
+      const input = dom.msgInput;
+      const start = input.selectionStart ?? input.value.length;
+      const end = input.selectionEnd ?? input.value.length;
+      input.value = input.value.slice(0, start) + emoji + input.value.slice(end);
+      input.focus();
+      const pos = start + emoji.length;
+      input.setSelectionRange(pos, pos);
+      autoResize();
+    };
+    dom.emojiGrid.appendChild(btn);
+  }
+}
+
+// ========== 输入框自适应 ==========
+function autoResize() {
+  dom.msgInput.style.height = "auto";
+  dom.msgInput.style.height = Math.min(dom.msgInput.scrollHeight, 120) + "px";
+}
+
+// ========== 设置 ==========
+function openSettings() {
+  dom.nicknameInput.value = state.user?.nickname || "";
+  renderSettingsAvatar();
+  dom.settingsModal.classList.remove("hidden");
+}
+
+function renderSettingsAvatar() {
+  const url = state.pendingAvatar
+    ? URL.createObjectURL(state.pendingAvatar)
+    : state.user?.avatar_url || null;
+  fillAvatar(dom.settingsAvatarPreview, state.user?.nickname || state.user?.username || "?", url);
+}
+
+async function saveSettings() {
+  const nickname = dom.nicknameInput.value.trim();
+  if (!nickname) {
+    toast("昵称不能为空", "error");
+    return;
+  }
+
+  dom.btnSaveSettings.disabled = true;
+  try {
+    // 上传头像（若已选择）
+    if (state.pendingAvatar) {
+      const formData = new FormData();
+      formData.append("file", state.pendingAvatar);
+      const res = await api("/api/user/avatar", { method: "POST", body: formData });
+      state.user.avatar_url = res.avatar_url;
+      state.pendingAvatar = null;
+    }
+
+    // 修改昵称
+    if (nickname !== state.user.nickname) {
+      const res = await api("/api/user/nickname", {
+        method: "PUT",
+        body: { nickname },
+      });
+      state.user.nickname = res.nickname;
+    }
+
+    localStorage.setItem(USER_KEY, JSON.stringify(state.user));
+    renderMe();
+    dom.settingsModal.classList.add("hidden");
+    dom.avatarInput.value = "";
+    toast("设置已保存", "success");
+
+    // 重连 WS，让 Durable Object 刷新缓存的最新用户信息
+    reconnectForProfile();
+  } catch (err) {
+    toast(err.message || "保存失败", "error");
+  } finally {
+    dom.btnSaveSettings.disabled = false;
+  }
+}
+
+function reconnectForProfile() {
+  if (state.ws) {
+    try {
+      state.ws.close();
+    } catch {
+      /* 忽略 */
+    }
+  }
+  state.reconnectDelay = 500;
+  connectWs();
+}
+
+// ========== 事件绑定 ==========
+function bindEvents() {
+  // 认证
+  dom.tabLogin.addEventListener("click", () => setMode("login"));
+  dom.tabRegister.addEventListener("click", () => setMode("register"));
+  dom.authForm.addEventListener("submit", handleAuthSubmit);
+  dom.btnLogout.addEventListener("click", handleLogout);
+
+  // 发送
+  dom.btnSend.addEventListener("click", handleSend);
+  dom.msgInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  });
+  dom.msgInput.addEventListener("input", autoResize);
+
+  // 上传
+  dom.btnUpload.addEventListener("click", () => dom.fileInput.click());
+  dom.fileInput.addEventListener("change", () => {
+    if (dom.fileInput.files?.[0]) handleFileSelected(dom.fileInput.files[0]);
+  });
+  dom.btnClearUpload.addEventListener("click", clearPendingFile);
+
+  // Emoji
+  dom.btnEmoji.addEventListener("click", (e) => {
+    e.stopPropagation();
+    dom.emojiPicker.classList.toggle("hidden");
+  });
+  document.addEventListener("click", (e) => {
+    if (!dom.emojiPicker.contains(e.target) && e.target !== dom.btnEmoji) {
+      dom.emojiPicker.classList.add("hidden");
+    }
+  });
+
+  // 媒体预览
+  dom.mediaBackdrop.addEventListener("click", closePreview);
+  dom.mediaClose.addEventListener("click", closePreview);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closePreview();
+      dom.settingsModal.classList.add("hidden");
+      dom.emojiPicker.classList.add("hidden");
+    }
+  });
+
+  // 设置
+  dom.btnSettings.addEventListener("click", openSettings);
+  dom.btnCloseSettings.addEventListener("click", () => dom.settingsModal.classList.add("hidden"));
+  dom.settingsModal.addEventListener("click", (e) => {
+    if (e.target === dom.settingsModal) dom.settingsModal.classList.add("hidden");
+  });
+  dom.btnAvatarUpload.addEventListener("click", () => dom.avatarInput.click());
+  dom.avatarInput.addEventListener("change", () => {
+    const file = dom.avatarInput.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast("头像必须是图片", "error");
+      return;
+    }
+    state.pendingAvatar = file;
+    renderSettingsAvatar();
+  });
+  dom.btnSaveSettings.addEventListener("click", saveSettings);
+
+  // 粘贴图片
+  document.addEventListener("paste", (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith("image/")) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) handleFileSelected(file);
+        break;
+      }
+    }
+  });
+}
+
+// ========== 启动 ==========
+function init() {
+  bindEvents();
+  renderEmojiGrid();
+  setMode("login");
+  tryRestoreSession();
+}
+
+init();

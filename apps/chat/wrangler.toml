@@ -30,6 +30,10 @@ bucket_name = "loopv-chat-media"
 pattern = "chat.loopv.net/*"
 zone_name = "loopv.net"
 
+[[routes]]
+pattern = "admin.loopv.net/*"
+zone_name = "loopv.net"
+
 [vars]
 MAX_MESSAGES = "200"
 MAX_UPLOAD_SIZE = "52428800"
