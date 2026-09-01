@@ -5,6 +5,7 @@ compatibility_date = "2025-08-01"
 # 静态资源目录
 [assets]
 directory = "./public"
+binding = "ASSETS"
 
 # Durable Object 声明
 [[durable_objects.bindings]]

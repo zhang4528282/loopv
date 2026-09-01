@@ -467,7 +467,7 @@ app.post("/api/admin/users/:id/ban", adminMiddleware, async (c) => {
 async function serveAsset(c: any, path: string) {
   const url = new URL(c.req.url);
   url.pathname = path;
-  return c.env.ASSETS.fetch(new Request(url, c.req.raw));
+  return c.env.ASSETS.fetch(new Request(url.toString()));
 }
 
 // chat 前端首页
