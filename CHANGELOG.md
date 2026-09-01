@@ -97,3 +97,20 @@
 #### 数据模型
 - `users` 表新增 `is_test`、`plain_password` 字段
 - `messages.deleted` 字段语义扩展为三态
+
+### 2026-09-01 (门户主页重设计)
+
+#### 设计改造（反 AI 感）
+- **配色**：AI 紫渐变（`#6366f1 → #8b5cf6`）→ 低饱和深墨绿单强调色（`#2e5d4f`）+ 暖灰中性底
+- **字体**：Inter → Outfit（正文）+ JetBrains Mono（等宽）
+- **布局**：居中 hero + 模板三段式 → 非对称 grid 布局
+- **终端**：深色终端 → 浅色纸感终端，融入明亮主题
+- **动效**：移除无意义循环动画，仅保留一次性 stagger 入场 + 打字机叙事 + hover 反馈，尊重 `prefers-reduced-motion`
+
+#### 新增
+- **聊天室入口**：`ChatCta.astro` 墨绿大卡片「进来聊聊」，作为页面视觉焦点
+- **导航栏**：`Header.astro` 简洁导航
+
+#### 组件变化
+- 新增 `Header.astro`、`ChatCta.astro`
+- 重写 `Hero.astro`、`Terminal.astro`、`About.astro`、`Footer.astro`

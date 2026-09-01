@@ -72,7 +72,7 @@ apps/
 2. **Hibernation API**：使用 Durable Object 的 WebSocket Hibernation，空闲时不计费，保持长连接
 3. **认证状态用 serializeAttachment**：DO 休眠唤醒后内存 Map 会失效，用 `serializeAttachment` 存储每连接的认证状态（Cloudflare 官方方案）
 4. **chat + admin 共用一个 Worker**：通过 `host` header 区分（`admin.` 前缀），复用 D1/R2 绑定
-5. **门户融合风格**：极简现代为主体 + 终端元素点缀，兼顾 SEO 和非技术访客
+5. **门户反 AI 感设计**：低饱和深墨绿单强调色（`#2e5d4f`）+ 暖灰中性底，Outfit 字体 + 非对称布局，浅色纸感终端，刻意避免 AI 紫渐变、模板化三段式等 AI 生成痕迹
 6. **Monorepo**：pnpm workspaces 管理多子站点，共享依赖
 
 ## Cloudflare 资源
