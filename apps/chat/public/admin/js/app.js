@@ -42,6 +42,14 @@ const MSG_TYPES = {
   },
 };
 
+// 消息状态映射：deleted 字段 → 展示
+const MSG_STATUS = {
+  0: { label: "正常", cls: "badge-active" },
+  1: { label: "用户撤回", cls: "badge-user-recall" },
+  2: { label: "管理员撤回", cls: "badge-admin-recall" },
+  3: { label: "已删除", cls: "badge-deleted" },
+};
+
 // ========== 状态 ==========
 const state = {
   token: null,
@@ -49,12 +57,28 @@ const state = {
   users: [],
   messages: [],
   activeTab: "users",
+  selectedMsgIds: new Set(),
+};
+
+const msgFilter = {
+  start: "",
+  end: "",
+  sender: "",
+  status: "",
+};
+
+const userFilter = {
+  username: "",
+  nickname: "",
+  role: "",
+  status: "",
 };
 
 // ========== DOM 引用 ==========
 const $ = (sel) => document.querySelector(sel);
 
 const dom = {
+  // 登录
   loginView: $("#login-view"),
   loginForm: $("#login-form"),
   loginUsername: $("#login-username"),
@@ -62,15 +86,19 @@ const dom = {
   loginError: $("#login-error"),
   loginSubmit: $("#login-submit"),
 
+  // 顶栏
   adminView: $("#admin-view"),
   meAvatar: $("#me-avatar"),
   meName: $("#me-name"),
   btnLogout: $("#btn-logout"),
 
+  // 统计
   statUsers: $("#stat-users"),
   statMessages: $("#stat-messages"),
+  statRecalled: $("#stat-recalled"),
   statDeleted: $("#stat-deleted"),
 
+  // 面板
   panelUsers: $("#panel-users"),
   panelMessages: $("#panel-messages"),
   usersBody: $("#users-body"),
@@ -80,11 +108,48 @@ const dom = {
   usersLoading: $("#users-loading"),
   messagesLoading: $("#messages-loading"),
 
+  // 用户筛选
+  fUsername: $("#f-username"),
+  fNickname: $("#f-nickname"),
+  fRole: $("#f-role"),
+  fStatus: $("#f-status"),
+  btnUserQuery: $("#btn-user-query"),
+  btnUserReset: $("#btn-user-reset"),
+  btnCreateUser: $("#btn-create-user"),
+
+  // 消息筛选
+  fStart: $("#f-start"),
+  fEnd: $("#f-end"),
+  fSender: $("#f-sender"),
+  fMsgStatus: $("#f-msg-status"),
+  btnMsgQuery: $("#btn-msg-query"),
+  btnMsgReset: $("#btn-msg-reset"),
+
+  // 批量删除
+  checkAll: $("#check-all"),
+  btnBatchDelete: $("#btn-batch-delete"),
+  batchCount: $("#batch-count"),
+
+  // 确认弹窗
   confirmModal: $("#confirm-modal"),
   confirmTitle: $("#confirm-title"),
   confirmText: $("#confirm-text"),
   confirmCancel: $("#confirm-cancel"),
   confirmOk: $("#confirm-ok"),
+
+  // 创建用户弹窗
+  createModal: $("#create-modal"),
+  btnCreateClose: $("#btn-create-close"),
+  createFormWrap: $("#create-form-wrap"),
+  createResultWrap: $("#create-result-wrap"),
+  createUsername: $("#create-username"),
+  createPassword: $("#create-password"),
+  createNickname: $("#create-nickname"),
+  btnCreateCancel: $("#btn-create-cancel"),
+  btnCreateSubmit: $("#btn-create-submit"),
+  createResultPassword: $("#create-result-password"),
+  btnCopyPassword: $("#btn-copy-password"),
+  btnCreateDone: $("#btn-create-done"),
 
   toast: $("#toast"),
 };
@@ -130,6 +195,14 @@ function formatTime(ts) {
   return `${get("year")}年${get("month")}月${get("day")}日 ${get("hour")}:${get("minute")}`;
 }
 
+// datetime-local 值 → Unix 秒
+function datetimeToUnix(value) {
+  if (!value) return 0;
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return 0;
+  return Math.floor(d.getTime() / 1000);
+}
+
 function avatarColor(seed) {
   let hash = 0;
   const s = String(seed || "x");
@@ -164,8 +237,22 @@ function isAdmin(u) {
   return u.is_admin === 1 || u.is_admin === true || u.is_admin === "1";
 }
 
+function isTest(u) {
+  return u.is_test === 1 || u.is_test === true || u.is_test === "1";
+}
+
 function isBanned(u) {
   return u.banned === 1 || u.banned === true || u.banned === "1";
+}
+
+function roleOf(u) {
+  if (isAdmin(u)) return { label: "管理员", cls: "badge-admin" };
+  if (isTest(u)) return { label: "测试用户", cls: "badge-test" };
+  return { label: "普通用户", cls: "badge-user" };
+}
+
+function msgStatus(deleted) {
+  return MSG_STATUS[deleted] || MSG_STATUS[0];
 }
 
 function toast(message, type = "info", duration = 2600) {
@@ -182,7 +269,6 @@ async function handleError(err) {
     showLogin();
     toast("登录已过期，请重新登录", "error");
   } else if (err.status === 403) {
-    // 403 可能是 token 失效（后端对失效/无权限统一返回 403），校验当前会话
     try {
       const data = await api("/api/auth/me");
       if (!data || !data.user || !isAdmin(data.user)) {
@@ -251,9 +337,7 @@ async function handleLogin(e) {
   try {
     const data = await api("/api/auth/login", { method: "POST", body: { username, password } });
     if (!isAdmin(data.user)) {
-      // 登录成功但非管理员
       dom.loginError.textContent = "无管理员权限";
-      // 尝试登出该 token
       state.token = data.token;
       api("/api/auth/logout", { method: "POST" }).catch(() => {});
       state.token = null;
@@ -275,7 +359,7 @@ async function handleLogout() {
   try {
     await api("/api/auth/logout", { method: "POST" });
   } catch {
-    /* 忽略登出接口错误 */
+    /* 忽略 */
   }
   clearSession();
   showLogin();
@@ -315,10 +399,32 @@ async function loadStats() {
     const data = await api("/api/admin/stats");
     dom.statUsers.textContent = data.users ?? 0;
     dom.statMessages.textContent = data.messages ?? 0;
+    dom.statRecalled.textContent = data.recalled ?? 0;
     dom.statDeleted.textContent = data.deleted ?? 0;
   } catch (err) {
     handleError(err);
   }
+}
+
+function buildUserQuery() {
+  const params = new URLSearchParams();
+  if (userFilter.username.trim()) params.set("username", userFilter.username.trim());
+  if (userFilter.nickname.trim()) params.set("nickname", userFilter.nickname.trim());
+  if (userFilter.role) params.set("role", userFilter.role);
+  if (userFilter.status) params.set("status", userFilter.status);
+  return params.toString();
+}
+
+function buildMsgQuery() {
+  const params = new URLSearchParams();
+  params.set("limit", MSG_LIMIT);
+  if (msgFilter.sender.trim()) params.set("sender", msgFilter.sender.trim());
+  if (msgFilter.status !== "") params.set("status", msgFilter.status);
+  const start = datetimeToUnix(msgFilter.start);
+  const end = datetimeToUnix(msgFilter.end);
+  if (start > 0) params.set("start", start);
+  if (end > 0) params.set("end", end);
+  return params.toString();
 }
 
 async function loadUsers() {
@@ -326,7 +432,8 @@ async function loadUsers() {
   dom.usersEmpty.classList.add("hidden");
   dom.usersBody.innerHTML = "";
   try {
-    const data = await api("/api/admin/users");
+    const qs = buildUserQuery();
+    const data = await api(`/api/admin/users${qs ? "?" + qs : ""}`);
     state.users = data.users || [];
     renderUsers();
   } catch (err) {
@@ -340,10 +447,13 @@ async function loadMessages() {
   dom.messagesLoading.classList.remove("hidden");
   dom.messagesEmpty.classList.add("hidden");
   dom.messagesBody.innerHTML = "";
+  state.selectedMsgIds.clear();
   try {
-    const data = await api(`/api/admin/messages?limit=${MSG_LIMIT}`);
+    const qs = buildMsgQuery();
+    const data = await api(`/api/admin/messages?${qs}`);
     state.messages = data.messages || [];
     renderMessages();
+    updateBatchUI();
   } catch (err) {
     handleError(err);
   } finally {
@@ -363,7 +473,9 @@ function renderUsers() {
   for (const u of state.users) {
     const tr = document.createElement("tr");
     const admin = isAdmin(u);
+    const test = isTest(u);
     const banned = isBanned(u);
+    const role = roleOf(u);
 
     // ID
     const tdId = document.createElement("td");
@@ -403,8 +515,8 @@ function renderUsers() {
     // 角色
     const tdRole = document.createElement("td");
     const roleBadge = document.createElement("span");
-    roleBadge.className = admin ? "badge badge-admin" : "badge badge-user";
-    roleBadge.textContent = admin ? "管理员" : "普通用户";
+    roleBadge.className = "badge " + role.cls;
+    roleBadge.textContent = role.label;
     tdRole.appendChild(roleBadge);
     tr.appendChild(tdRole);
 
@@ -415,6 +527,39 @@ function renderUsers() {
     statusBadge.textContent = banned ? "已封禁" : "正常";
     tdStatus.appendChild(statusBadge);
     tr.appendChild(tdStatus);
+
+    // 密码（测试用户显示明文，可切换）
+    const tdPwd = document.createElement("td");
+    if (test) {
+      const wrap = document.createElement("div");
+      wrap.className = "password-cell";
+      const txt = document.createElement("span");
+      txt.className = "password-value";
+      txt.dataset.pwd = u.plain_password || "";
+      txt.textContent = "••••••";
+      const toggle = document.createElement("button");
+      toggle.className = "password-toggle";
+      toggle.type = "button";
+      toggle.textContent = "显示";
+      toggle.onclick = () => {
+        if (txt.classList.contains("show")) {
+          txt.textContent = "••••••";
+          txt.classList.remove("show");
+          toggle.textContent = "显示";
+        } else {
+          txt.textContent = txt.dataset.pwd || "";
+          txt.classList.add("show");
+          toggle.textContent = "隐藏";
+        }
+      };
+      wrap.appendChild(txt);
+      wrap.appendChild(toggle);
+      tdPwd.appendChild(wrap);
+    } else {
+      tdPwd.className = "cell-dim";
+      tdPwd.textContent = "—";
+    }
+    tr.appendChild(tdPwd);
 
     // 注册时间
     const tdTime = document.createElement("td");
@@ -433,11 +578,16 @@ function renderUsers() {
     } else {
       const actions = document.createElement("div");
       actions.className = "actions";
-      const btn = document.createElement("button");
-      btn.className = banned ? "btn-action btn-success" : "btn-action btn-danger";
-      btn.textContent = banned ? "解封" : "封禁";
-      btn.onclick = () => toggleBan(u);
-      actions.appendChild(btn);
+      const banBtn = document.createElement("button");
+      banBtn.className = banned ? "btn-action btn-success" : "btn-action btn-danger";
+      banBtn.textContent = banned ? "解封" : "封禁";
+      banBtn.onclick = () => toggleBan(u);
+      const delBtn = document.createElement("button");
+      delBtn.className = "btn-action btn-danger";
+      delBtn.textContent = "删除";
+      delBtn.onclick = () => confirmDeleteUser(u);
+      actions.appendChild(banBtn);
+      actions.appendChild(delBtn);
       tdActions.appendChild(actions);
     }
     tr.appendChild(tdActions);
@@ -457,9 +607,28 @@ function renderMessages() {
 
   for (const m of state.messages) {
     const tr = document.createElement("tr");
-    const deleted = m.deleted === 1 || m.deleted === true;
+    const deleted = m.deleted == null ? 0 : Number(m.deleted);
+    const status = msgStatus(deleted);
     const meta = MSG_TYPES[m.type] || MSG_TYPES.text;
-    if (deleted) tr.classList.add("row-deleted");
+    if (deleted === 3) tr.classList.add("row-deleted");
+
+    // 勾选框（已删除不可勾选）
+    const tdCheck = document.createElement("td");
+    tdCheck.className = "col-check";
+    if (deleted !== 3) {
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.dataset.id = m.id;
+      cb.checked = state.selectedMsgIds.has(Number(m.id));
+      cb.onchange = () => {
+        const id = Number(m.id);
+        if (cb.checked) state.selectedMsgIds.add(id);
+        else state.selectedMsgIds.delete(id);
+        updateBatchUI();
+      };
+      tdCheck.appendChild(cb);
+    }
+    tr.appendChild(tdCheck);
 
     // ID
     const tdId = document.createElement("td");
@@ -496,15 +665,15 @@ function renderMessages() {
     // 状态
     const tdStatus = document.createElement("td");
     const statusBadge = document.createElement("span");
-    statusBadge.className = deleted ? "badge badge-deleted" : "badge badge-active";
-    statusBadge.textContent = deleted ? "已撤回" : "正常";
+    statusBadge.className = "badge " + status.cls;
+    statusBadge.textContent = status.label;
     tdStatus.appendChild(statusBadge);
     tr.appendChild(tdStatus);
 
     // 操作
     const tdActions = document.createElement("td");
     tdActions.className = "col-actions";
-    if (deleted) {
+    if (deleted === 3) {
       const none = document.createElement("span");
       none.className = "action-none";
       none.textContent = "—";
@@ -512,11 +681,18 @@ function renderMessages() {
     } else {
       const actions = document.createElement("div");
       actions.className = "actions";
-      const btn = document.createElement("button");
-      btn.className = "btn-action btn-danger";
-      btn.textContent = "删除";
-      btn.onclick = () => confirmDeleteMessage(m);
-      actions.appendChild(btn);
+      if (deleted === 0) {
+        const recallBtn = document.createElement("button");
+        recallBtn.className = "btn-action btn-warn";
+        recallBtn.textContent = "撤回";
+        recallBtn.onclick = () => confirmRecallMessage(m);
+        actions.appendChild(recallBtn);
+      }
+      const delBtn = document.createElement("button");
+      delBtn.className = "btn-action btn-danger";
+      delBtn.textContent = "删除";
+      delBtn.onclick = () => confirmDeleteMessage(m);
+      actions.appendChild(delBtn);
       tdActions.appendChild(actions);
     }
     tr.appendChild(tdActions);
@@ -527,9 +703,13 @@ function renderMessages() {
 
 function renderMsgPreview(m, deleted, meta) {
   const wrap = document.createElement("div");
-  wrap.className = "msg-preview" + (deleted ? " deleted" : "");
+  wrap.className = "msg-preview" + (deleted !== 0 ? " deleted" : "");
 
-  if (deleted) {
+  if (deleted === 3) {
+    wrap.textContent = "已删除";
+    return wrap;
+  }
+  if (deleted === 1 || deleted === 2) {
     wrap.textContent = "消息已撤回";
     return wrap;
   }
@@ -567,6 +747,26 @@ function renderMsgPreview(m, deleted, meta) {
   return wrap;
 }
 
+// ========== 批量勾选 ==========
+function updateBatchUI() {
+  const selectable = state.messages.filter((m) => Number(m.deleted) !== 3);
+  const selected = state.selectedMsgIds.size;
+  const allChecked = selectable.length > 0 && selectable.every((m) => state.selectedMsgIds.has(Number(m.id)));
+
+  dom.checkAll.checked = allChecked;
+  dom.checkAll.disabled = selectable.length === 0;
+  dom.btnBatchDelete.disabled = selected === 0;
+  dom.batchCount.textContent = selected > 0 ? `已选 ${selected} 条` : "未选择消息";
+  dom.batchCount.classList.toggle("active", selected > 0);
+}
+
+function syncCheckboxState() {
+  dom.messagesBody.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+    cb.checked = state.selectedMsgIds.has(Number(cb.dataset.id));
+  });
+  updateBatchUI();
+}
+
 // ========== 标签页 ==========
 function switchTab(tab) {
   state.activeTab = tab;
@@ -584,7 +784,7 @@ function switchTab(tab) {
   }
 }
 
-// ========== 操作 ==========
+// ========== 确认弹窗 ==========
 let confirmCallback = null;
 
 function confirmAction(title, text, onConfirm) {
@@ -599,6 +799,7 @@ function closeConfirm() {
   confirmCallback = null;
 }
 
+// ========== 用户操作 ==========
 function toggleBan(user) {
   const banned = isBanned(user);
   const name = user.nickname || user.username;
@@ -613,11 +814,44 @@ function toggleBan(user) {
           method: "POST",
           body: { banned: !banned },
         });
-        // 乐观更新本地状态
-        const target = state.users.find((u) => Number(u.id) === Number(user.id));
-        if (target) target.banned = !banned ? 1 : 0;
-        renderUsers();
         toast(banned ? "已解封" : "已封禁", "success");
+        loadUsers();
+      } catch (err) {
+        handleError(err);
+      }
+    }
+  );
+}
+
+function confirmDeleteUser(user) {
+  const name = user.nickname || user.username;
+  confirmAction(
+    "删除用户",
+    `确定要删除用户「${name}」吗？该操作不可恢复，其所有会话将一并失效。`,
+    async () => {
+      try {
+        await api(`/api/admin/users/${user.id}`, { method: "DELETE" });
+        toast("用户已删除", "success");
+        loadUsers();
+        loadStats();
+      } catch (err) {
+        handleError(err);
+      }
+    }
+  );
+}
+
+// ========== 消息操作 ==========
+function confirmRecallMessage(m) {
+  confirmAction(
+    "撤回消息",
+    `确定要撤回消息 #${m.id} 吗？撤回后聊天室将显示「已被管理员撤回」。`,
+    async () => {
+      try {
+        await api(`/api/admin/messages/${m.id}/recall`, { method: "POST" });
+        toast("消息已撤回", "success");
+        loadMessages();
+        loadStats();
       } catch (err) {
         handleError(err);
       }
@@ -628,20 +862,143 @@ function toggleBan(user) {
 function confirmDeleteMessage(m) {
   confirmAction(
     "删除消息",
-    `确定要删除消息 #${m.id} 吗？删除后该消息将对所有用户显示为「已撤回」。`,
+    `确定要删除消息 #${m.id} 吗？删除后该消息将从聊天室移除。`,
     async () => {
       try {
         await api(`/api/admin/messages/${m.id}/delete`, { method: "POST" });
-        const target = state.messages.find((x) => Number(x.id) === Number(m.id));
-        if (target) target.deleted = 1;
-        renderMessages();
-        loadStats();
         toast("消息已删除", "success");
+        loadMessages();
+        loadStats();
       } catch (err) {
         handleError(err);
       }
     }
   );
+}
+
+function confirmBatchDelete() {
+  const ids = [...state.selectedMsgIds];
+  if (!ids.length) return;
+  confirmAction(
+    "批量删除",
+    `确定要删除选中的 ${ids.length} 条消息吗？删除后将全部从聊天室移除。`,
+    async () => {
+      try {
+        await api("/api/admin/messages/batch-delete", { method: "POST", body: { ids } });
+        toast(`已删除 ${ids.length} 条消息`, "success");
+        loadMessages();
+        loadStats();
+      } catch (err) {
+        handleError(err);
+      }
+    }
+  );
+}
+
+// ========== 创建测试用户 ==========
+function openCreateModal() {
+  dom.createUsername.value = "";
+  dom.createPassword.value = "";
+  dom.createNickname.value = "";
+  dom.createFormWrap.classList.remove("hidden");
+  dom.createResultWrap.classList.add("hidden");
+  dom.createModal.classList.remove("hidden");
+  setTimeout(() => dom.createUsername.focus(), 50);
+}
+
+function closeCreateModal() {
+  dom.createModal.classList.add("hidden");
+}
+
+async function submitCreateUser() {
+  const username = dom.createUsername.value.trim();
+  const password = dom.createPassword.value;
+  const nickname = dom.createNickname.value.trim();
+
+  if (!username || !password) {
+    toast("用户名和密码不能为空", "error");
+    return;
+  }
+
+  dom.btnCreateSubmit.disabled = true;
+  try {
+    const data = await api("/api/admin/users", {
+      method: "POST",
+      body: { username, password, nickname: nickname || username },
+    });
+    // 展示结果（明文密码）
+    dom.createResultPassword.textContent = data.user.plain_password;
+    dom.createFormWrap.classList.add("hidden");
+    dom.createResultWrap.classList.remove("hidden");
+    dom.btnCreateSubmit.disabled = false;
+    loadUsers();
+    loadStats();
+  } catch (err) {
+    dom.btnCreateSubmit.disabled = false;
+    handleError(err);
+  }
+}
+
+async function copyPassword() {
+  const pwd = dom.createResultPassword.textContent;
+  if (!pwd) return;
+  try {
+    await navigator.clipboard.writeText(pwd);
+    toast("已复制到剪贴板", "success");
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = pwd;
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand("copy");
+      toast("已复制到剪贴板", "success");
+    } catch {
+      toast("复制失败，请手动复制", "error");
+    }
+    ta.remove();
+  }
+}
+
+// ========== 筛选 ==========
+function applyUserFilter() {
+  userFilter.username = dom.fUsername.value;
+  userFilter.nickname = dom.fNickname.value;
+  userFilter.role = dom.fRole.value;
+  userFilter.status = dom.fStatus.value;
+  loadUsers();
+}
+
+function resetUserFilter() {
+  dom.fUsername.value = "";
+  dom.fNickname.value = "";
+  dom.fRole.value = "";
+  dom.fStatus.value = "";
+  userFilter.username = "";
+  userFilter.nickname = "";
+  userFilter.role = "";
+  userFilter.status = "";
+  loadUsers();
+}
+
+function applyMsgFilter() {
+  msgFilter.start = dom.fStart.value;
+  msgFilter.end = dom.fEnd.value;
+  msgFilter.sender = dom.fSender.value;
+  msgFilter.status = dom.fMsgStatus.value;
+  loadMessages();
+}
+
+function resetMsgFilter() {
+  dom.fStart.value = "";
+  dom.fEnd.value = "";
+  dom.fSender.value = "";
+  dom.fMsgStatus.value = "";
+  msgFilter.start = "";
+  msgFilter.end = "";
+  msgFilter.sender = "";
+  msgFilter.status = "";
+  loadMessages();
 }
 
 // ========== 事件绑定 ==========
@@ -653,6 +1010,7 @@ function bindEvents() {
     el.addEventListener("click", () => switchTab(el.dataset.tab));
   });
 
+  // 确认弹窗
   dom.confirmCancel.addEventListener("click", closeConfirm);
   dom.confirmOk.addEventListener("click", () => {
     if (confirmCallback) confirmCallback();
@@ -661,8 +1019,46 @@ function bindEvents() {
   dom.confirmModal.addEventListener("click", (e) => {
     if (e.target === dom.confirmModal) closeConfirm();
   });
+
+  // 用户筛选
+  dom.btnUserQuery.addEventListener("click", applyUserFilter);
+  dom.btnUserReset.addEventListener("click", resetUserFilter);
+  dom.fUsername.addEventListener("keydown", (e) => e.key === "Enter" && applyUserFilter());
+  dom.fNickname.addEventListener("keydown", (e) => e.key === "Enter" && applyUserFilter());
+
+  // 消息筛选
+  dom.btnMsgQuery.addEventListener("click", applyMsgFilter);
+  dom.btnMsgReset.addEventListener("click", resetMsgFilter);
+  dom.fSender.addEventListener("keydown", (e) => e.key === "Enter" && applyMsgFilter());
+
+  // 批量删除 + 全选
+  dom.btnBatchDelete.addEventListener("click", confirmBatchDelete);
+  dom.checkAll.addEventListener("change", () => {
+    const selectable = state.messages.filter((m) => Number(m.deleted) !== 3);
+    if (dom.checkAll.checked) {
+      selectable.forEach((m) => state.selectedMsgIds.add(Number(m.id)));
+    } else {
+      selectable.forEach((m) => state.selectedMsgIds.delete(Number(m.id)));
+    }
+    syncCheckboxState();
+  });
+
+  // 创建用户弹窗
+  dom.btnCreateUser.addEventListener("click", openCreateModal);
+  dom.btnCreateClose.addEventListener("click", closeCreateModal);
+  dom.btnCreateCancel.addEventListener("click", closeCreateModal);
+  dom.btnCreateSubmit.addEventListener("click", submitCreateUser);
+  dom.btnCopyPassword.addEventListener("click", copyPassword);
+  dom.btnCreateDone.addEventListener("click", closeCreateModal);
+  dom.createModal.addEventListener("click", (e) => {
+    if (e.target === dom.createModal) closeCreateModal();
+  });
+
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeConfirm();
+    if (e.key === "Escape") {
+      closeConfirm();
+      closeCreateModal();
+    }
   });
 }
 

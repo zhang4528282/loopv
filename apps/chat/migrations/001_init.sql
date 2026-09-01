@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS users (
     nickname TEXT NOT NULL,
     avatar_url TEXT,
     is_admin INTEGER NOT NULL DEFAULT 0,
+    is_test INTEGER NOT NULL DEFAULT 0,
+    plain_password TEXT,
     banned INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL DEFAULT (unixepoch())
 );

@@ -419,8 +419,12 @@ function handleWsMessage(data) {
       scrollToBottom();
       break;
 
-    case "delete":
-      markDeleted(data.id);
+    case "recall":
+      markRecalled(data.id, data.by);
+      break;
+
+    case "remove":
+      removeMessages(data.ids || [data.id]);
       break;
 
     case "online_users":
@@ -517,7 +521,8 @@ function appendMessage(msg, animate) {
   const mediaType = msg.media_type || null;
   const nickname = msg.nickname || "匿名";
   const avatarUrl = msg.avatar_url || null;
-  const deleted = msg.deleted === 1 || msg.deleted === true;
+  const deletedValue = msg.deleted === 1 || msg.deleted === 2 ? msg.deleted : 0;
+  const isRecalled = deletedValue === 1 || deletedValue === 2;
   const isOwn = Number(msg.user_id) === Number(state.user?.id);
 
   const row = document.createElement("div");
@@ -542,7 +547,7 @@ function appendMessage(msg, animate) {
   if (isOwn) {
     const actions = document.createElement("div");
     actions.className = "msg-actions";
-    if (!deleted) {
+    if (!isRecalled) {
       const delBtn = document.createElement("button");
       delBtn.className = "btn-delete";
       delBtn.textContent = "撤回";
@@ -557,9 +562,9 @@ function appendMessage(msg, animate) {
   const bubble = document.createElement("div");
   bubble.className = "msg-bubble";
 
-  if (deleted) {
+  if (isRecalled) {
     bubble.classList.add("deleted");
-    bubble.textContent = "消息已撤回";
+    bubble.textContent = deletedValue === 2 ? "已被管理员撤回" : "消息已撤回";
   } else {
     renderBubble(bubble, type, content, mediaUrl, mediaType);
   }
@@ -652,16 +657,23 @@ function appendCaption(bubble, content) {
   }
 }
 
-function markDeleted(id) {
+function markRecalled(id, by) {
   const row = dom.messages.querySelector(`.msg-row[data-id="${id}"]`);
   if (!row) return;
   const bubble = row.querySelector(".msg-bubble");
   if (bubble) {
     bubble.className = "msg-bubble deleted";
-    bubble.textContent = "消息已撤回";
+    bubble.textContent = by === "admin" ? "已被管理员撤回" : "消息已撤回";
   }
   const actions = row.querySelector(".msg-actions");
   if (actions) actions.remove();
+}
+
+function removeMessages(ids) {
+  for (const id of ids) {
+    const row = dom.messages.querySelector(`.msg-row[data-id="${id}"]`);
+    if (row) row.remove();
+  }
 }
 
 function scrollToBottom(force) {
@@ -776,7 +788,7 @@ async function deleteMessage(id) {
   // HTTP fallback
   try {
     await api(`/api/messages/${id}/delete`, { method: "POST" });
-    markDeleted(id);
+    markRecalled(id, "user");
   } catch (err) {
     toast(err.message || "撤回失败", "error");
   }

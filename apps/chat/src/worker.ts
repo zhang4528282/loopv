@@ -30,6 +30,7 @@ interface AuthUser {
   nickname: string;
   avatar_url: string | null;
   is_admin: boolean;
+  is_test: boolean;
 }
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -62,7 +63,7 @@ async function getUserByToken(db: D1Database, token: string): Promise<AuthUser |
   if ((session.expires_at as number) < now) return null;
 
   const user = await db
-    .prepare(`SELECT id, username, nickname, avatar_url, is_admin, banned FROM users WHERE id = ?1`)
+    .prepare(`SELECT id, username, nickname, avatar_url, is_admin, is_test, banned FROM users WHERE id = ?1`)
     .bind(session.user_id as number)
     .first();
   if (!user) return null;
@@ -75,6 +76,7 @@ async function getUserByToken(db: D1Database, token: string): Promise<AuthUser |
     nickname: user.nickname as string,
     avatar_url: (user.avatar_url as string) || null,
     is_admin: (user.is_admin as number) === 1,
+    is_test: (user.is_test as number) === 1,
   };
 }
 
@@ -299,7 +301,7 @@ app.post("/api/user/avatar", async (c) => {
 
 // ===================== 消息 API =====================
 
-// 获取历史消息
+// 获取历史消息（deleted=3 已删除的不返回）
 app.get("/api/history", async (c) => {
   const limit = Math.min(parseInt(c.req.query("limit") || "50"), 200);
   const before = parseInt(c.req.query("before") || "0");
@@ -308,12 +310,12 @@ app.get("/api/history", async (c) => {
   if (before > 0) {
     query = c.env.DB.prepare(
       `SELECT id, user_id, nickname, avatar_url, type, content, media_url, media_type, deleted, created_at
-       FROM messages WHERE created_at < ?1 ORDER BY created_at DESC LIMIT ?2`
+       FROM messages WHERE deleted != 3 AND created_at < ?1 ORDER BY created_at DESC LIMIT ?2`
     ).bind(before, limit);
   } else {
     query = c.env.DB.prepare(
       `SELECT id, user_id, nickname, avatar_url, type, content, media_url, media_type, deleted, created_at
-       FROM messages ORDER BY created_at DESC LIMIT ?1`
+       FROM messages WHERE deleted != 3 ORDER BY created_at DESC LIMIT ?1`
     ).bind(limit);
   }
 
@@ -321,7 +323,7 @@ app.get("/api/history", async (c) => {
   return c.json({ messages: results.reverse() });
 });
 
-// 撤回消息（HTTP fallback）
+// 撤回消息（HTTP fallback）：用户撤回自己 deleted=1，管理员撤回 deleted=2
 app.post("/api/messages/:id/delete", async (c) => {
   const user = c.get("user");
   if (!user) return c.json({ error: "请先登录" }, 401);
@@ -340,11 +342,15 @@ app.post("/api/messages/:id/delete", async (c) => {
     return c.json({ error: "只能撤回自己的消息" }, 403);
   }
 
-  await c.env.DB.prepare(`UPDATE messages SET deleted = 1 WHERE id = ?1`)
-    .bind(messageId)
+  // 管理员撤回他人消息标记为 2（管理员撤回），否则 1（用户撤回）
+  const deletedValue =
+    user.is_admin && (msg.user_id as number) !== user.id ? 2 : 1;
+
+  await c.env.DB.prepare(`UPDATE messages SET deleted = ?1 WHERE id = ?2`)
+    .bind(deletedValue, messageId)
     .run();
 
-  return c.json({ success: true });
+  return c.json({ success: true, deleted: deletedValue });
 });
 
 // 上传媒体文件
@@ -395,45 +401,236 @@ app.get("/media/:filename", async (c) => {
 
 // ===================== 管理平台 API =====================
 
+// 通知 DO 广播事件（用于 admin 撤回/删除后实时推送）
+async function notifyRoom(env: Bindings, payload: any) {
+  try {
+    const id = env.CHAT_ROOM.idFromName("main");
+    const stub = env.CHAT_ROOM.get(id);
+    await stub.fetch("https://internal/broadcast", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    console.error("notifyRoom error:", e);
+  }
+}
+
 // 统计信息
 app.get("/api/admin/stats", adminMiddleware, async (c) => {
   const userCount = await c.env.DB.prepare(`SELECT COUNT(*) as cnt FROM users`).first();
   const messageCount = await c.env.DB.prepare(`SELECT COUNT(*) as cnt FROM messages`).first();
-  const deletedCount = await c.env.DB.prepare(`SELECT COUNT(*) as cnt FROM messages WHERE deleted = 1`).first();
+  const recalledCount = await c.env.DB.prepare(`SELECT COUNT(*) as cnt FROM messages WHERE deleted IN (1, 2)`).first();
+  const deletedCount = await c.env.DB.prepare(`SELECT COUNT(*) as cnt FROM messages WHERE deleted = 3`).first();
 
   return c.json({
     users: userCount?.cnt || 0,
     messages: messageCount?.cnt || 0,
+    recalled: recalledCount?.cnt || 0,
     deleted: deletedCount?.cnt || 0,
   });
 });
 
-// 用户列表
+// 用户列表（支持筛选：username/nickname/role/status）
 app.get("/api/admin/users", adminMiddleware, async (c) => {
+  const username = c.req.query("username");
+  const nickname = c.req.query("nickname");
+  const role = c.req.query("role"); // admin | user | test
+  const status = c.req.query("status"); // banned | normal
+
+  const conditions: string[] = [];
+  const params: any[] = [];
+
+  if (username) {
+    conditions.push("username LIKE ?");
+    params.push(`%${username}%`);
+  }
+  if (nickname) {
+    conditions.push("nickname LIKE ?");
+    params.push(`%${nickname}%`);
+  }
+  if (role === "admin") {
+    conditions.push("is_admin = 1");
+  } else if (role === "test") {
+    conditions.push("is_test = 1");
+  } else if (role === "user") {
+    conditions.push("is_admin = 0 AND is_test = 0");
+  }
+  if (status === "banned") {
+    conditions.push("banned = 1");
+  } else if (status === "normal") {
+    conditions.push("banned = 0");
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const { results } = await c.env.DB.prepare(
-    `SELECT id, username, nickname, avatar_url, is_admin, banned, created_at FROM users ORDER BY id DESC`
-  ).all();
+    `SELECT id, username, nickname, avatar_url, is_admin, is_test, plain_password, banned, created_at FROM users ${where} ORDER BY id DESC`
+  )
+    .bind(...params)
+    .all();
   return c.json({ users: results });
 });
 
-// 消息列表
+// 创建测试用户（is_test=1，返回明文密码供后台显示）
+app.post("/api/admin/users", adminMiddleware, async (c) => {
+  const body = await c.req.json();
+  const username = (body.username || "").trim();
+  const password = body.password || "";
+  const nickname = (body.nickname || "").trim() || username;
+
+  if (!username || !password) {
+    return c.json({ error: "用户名和密码不能为空" }, 400);
+  }
+  if (username.length < 2 || username.length > 20) {
+    return c.json({ error: "用户名长度需在 2-20 个字符之间" }, 400);
+  }
+  if (password.length < 6 || password.length > 64) {
+    return c.json({ error: "密码长度需在 6-64 个字符之间" }, 400);
+  }
+  if (nickname.length > 20) {
+    return c.json({ error: "昵称长度不能超过 20 个字符" }, 400);
+  }
+
+  const existing = await c.env.DB.prepare(
+    `SELECT id FROM users WHERE username = ?1`
+  )
+    .bind(username)
+    .first();
+  if (existing) {
+    return c.json({ error: "用户名已被占用" }, 409);
+  }
+
+  const salt = generateSalt();
+  const passwordHash = await hashPassword(password, salt);
+
+  const result = await c.env.DB.prepare(
+    `INSERT INTO users (username, password_hash, salt, nickname, is_test, plain_password) VALUES (?1, ?2, ?3, ?4, 1, ?5)`
+  )
+    .bind(username, passwordHash, salt, nickname, password)
+    .run();
+
+  const userId = result.meta.last_row_id ?? 0;
+  return c.json({
+    user: {
+      id: userId,
+      username,
+      nickname,
+      avatar_url: null,
+      is_admin: 0,
+      is_test: 1,
+      plain_password: password,
+      banned: 0,
+    },
+  });
+});
+
+// 删除用户（测试用户，不能删除管理员或自己）
+app.delete("/api/admin/users/:id", adminMiddleware, async (c) => {
+  const userId = parseInt(c.req.param("id"));
+  const me = c.get("user");
+  if (userId === me.id) {
+    return c.json({ error: "不能删除自己的账号" }, 400);
+  }
+
+  const target = await c.env.DB.prepare(
+    `SELECT is_admin FROM users WHERE id = ?1`
+  )
+    .bind(userId)
+    .first();
+  if (!target) {
+    return c.json({ error: "用户不存在" }, 404);
+  }
+  if ((target.is_admin as number) === 1) {
+    return c.json({ error: "不能删除管理员账号" }, 400);
+  }
+
+  await c.env.DB.prepare(`DELETE FROM sessions WHERE user_id = ?1`).bind(userId).run();
+  await c.env.DB.prepare(`DELETE FROM users WHERE id = ?1`).bind(userId).run();
+
+  return c.json({ success: true });
+});
+
+// 消息列表（支持筛选：status/sender/start/end）
 app.get("/api/admin/messages", adminMiddleware, async (c) => {
   const limit = Math.min(parseInt(c.req.query("limit") || "100"), 500);
+  const status = c.req.query("status"); // 0=正常 1=用户撤回 2=管理员撤回 3=已删除
+  const sender = c.req.query("sender");
+  const start = parseInt(c.req.query("start") || "0");
+  const end = parseInt(c.req.query("end") || "0");
+
+  const conditions: string[] = [];
+  const params: any[] = [];
+
+  if (status !== undefined && status !== "") {
+    conditions.push("deleted = ?");
+    params.push(parseInt(status));
+  }
+  if (sender) {
+    conditions.push("nickname LIKE ?");
+    params.push(`%${sender}%`);
+  }
+  if (start > 0) {
+    conditions.push("created_at >= ?");
+    params.push(start);
+  }
+  if (end > 0) {
+    conditions.push("created_at <= ?");
+    params.push(end);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  params.push(limit);
+
   const { results } = await c.env.DB.prepare(
-    `SELECT id, user_id, nickname, type, content, media_url, deleted, created_at FROM messages ORDER BY id DESC LIMIT ?1`
+    `SELECT id, user_id, nickname, type, content, media_url, deleted, created_at FROM messages ${where} ORDER BY id DESC LIMIT ?`
   )
-    .bind(limit)
+    .bind(...params)
     .all();
   return c.json({ messages: results });
 });
 
-// 管理员删除消息
+// 管理员删除消息（deleted=3，chat 界面不显示）
 app.post("/api/admin/messages/:id/delete", adminMiddleware, async (c) => {
   const messageId = parseInt(c.req.param("id"));
-  await c.env.DB.prepare(`UPDATE messages SET deleted = 1 WHERE id = ?1`)
+  await c.env.DB.prepare(`UPDATE messages SET deleted = 3 WHERE id = ?1`)
     .bind(messageId)
     .run();
+  await notifyRoom(c.env, { type: "remove", ids: [messageId] });
   return c.json({ success: true });
+});
+
+// 管理员撤回消息（deleted=2，chat 界面显示"已被管理员撤回"）
+app.post("/api/admin/messages/:id/recall", adminMiddleware, async (c) => {
+  const messageId = parseInt(c.req.param("id"));
+  await c.env.DB.prepare(`UPDATE messages SET deleted = 2 WHERE id = ?1`)
+    .bind(messageId)
+    .run();
+  await notifyRoom(c.env, { type: "recall", id: messageId, by: "admin" });
+  return c.json({ success: true });
+});
+
+// 批量删除消息
+app.post("/api/admin/messages/batch-delete", adminMiddleware, async (c) => {
+  const body = await c.req.json();
+  const ids = body.ids || [];
+  if (!Array.isArray(ids) || !ids.length) {
+    return c.json({ error: "ids 不能为空" }, 400);
+  }
+
+  const numericIds = ids.map((n: any) => parseInt(n)).filter((n: number) => !isNaN(n));
+  if (!numericIds.length) {
+    return c.json({ error: "ids 无效" }, 400);
+  }
+
+  const placeholders = numericIds.map(() => "?").join(",");
+  await c.env.DB.prepare(
+    `UPDATE messages SET deleted = 3 WHERE id IN (${placeholders})`
+  )
+    .bind(...numericIds)
+    .run();
+
+  await notifyRoom(c.env, { type: "remove", ids: numericIds });
+
+  return c.json({ success: true, count: numericIds.length });
 });
 
 // 封禁/解封用户

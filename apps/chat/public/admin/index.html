@@ -81,12 +81,21 @@
           </div>
         </div>
         <div class="stat-card">
+          <div class="stat-icon ic-recalled">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          </div>
+          <div class="stat-info">
+            <div class="stat-value" id="stat-recalled">—</div>
+            <div class="stat-label">已撤回消息</div>
+          </div>
+        </div>
+        <div class="stat-card">
           <div class="stat-icon ic-deleted">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
           </div>
           <div class="stat-info">
             <div class="stat-value" id="stat-deleted">—</div>
-            <div class="stat-label">已撤回消息</div>
+            <div class="stat-label">已删除消息</div>
           </div>
         </div>
       </section>
@@ -97,8 +106,47 @@
         <button class="tab" data-tab="messages" type="button">消息管理</button>
       </div>
 
-      <!-- 用户管理 -->
+      <!-- ===================== 用户管理 ===================== -->
       <section class="panel" id="panel-users">
+        <div class="panel-toolbar">
+          <button class="btn-primary btn-sm" id="btn-create-user" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            创建测试用户
+          </button>
+        </div>
+
+        <div class="filter-bar">
+          <div class="filter-item">
+            <label for="f-username">用户名</label>
+            <input id="f-username" type="text" placeholder="模糊搜索" />
+          </div>
+          <div class="filter-item">
+            <label for="f-nickname">昵称</label>
+            <input id="f-nickname" type="text" placeholder="模糊搜索" />
+          </div>
+          <div class="filter-item">
+            <label for="f-role">角色</label>
+            <select id="f-role">
+              <option value="">全部</option>
+              <option value="admin">管理员</option>
+              <option value="user">普通用户</option>
+              <option value="test">测试用户</option>
+            </select>
+          </div>
+          <div class="filter-item">
+            <label for="f-status">状态</label>
+            <select id="f-status">
+              <option value="">全部</option>
+              <option value="normal">正常</option>
+              <option value="banned">已封禁</option>
+            </select>
+          </div>
+          <div class="filter-actions">
+            <button class="btn-secondary" id="btn-user-reset" type="button">重置</button>
+            <button class="btn-primary" id="btn-user-query" type="button">查询</button>
+          </div>
+        </div>
+
         <div class="table-wrap">
           <table>
             <thead>
@@ -109,6 +157,7 @@
                 <th>头像</th>
                 <th>角色</th>
                 <th>状态</th>
+                <th>密码</th>
                 <th>注册时间</th>
                 <th class="col-actions">操作</th>
               </tr>
@@ -120,12 +169,47 @@
         <div class="loading" id="users-loading"><span class="spinner"></span>加载中…</div>
       </section>
 
-      <!-- 消息管理 -->
+      <!-- ===================== 消息管理 ===================== -->
       <section class="panel hidden" id="panel-messages">
+        <div class="panel-toolbar">
+          <button class="btn-action btn-danger" id="btn-batch-delete" type="button" disabled>批量删除</button>
+          <span class="batch-count" id="batch-count">未选择消息</span>
+        </div>
+
+        <div class="filter-bar">
+          <div class="filter-item">
+            <label for="f-start">开始时间</label>
+            <input id="f-start" type="datetime-local" />
+          </div>
+          <div class="filter-item">
+            <label for="f-end">结束时间</label>
+            <input id="f-end" type="datetime-local" />
+          </div>
+          <div class="filter-item">
+            <label for="f-sender">发送者</label>
+            <input id="f-sender" type="text" placeholder="昵称模糊搜索" />
+          </div>
+          <div class="filter-item">
+            <label for="f-msg-status">消息状态</label>
+            <select id="f-msg-status">
+              <option value="">全部</option>
+              <option value="0">正常</option>
+              <option value="1">用户撤回</option>
+              <option value="2">管理员撤回</option>
+              <option value="3">已删除</option>
+            </select>
+          </div>
+          <div class="filter-actions">
+            <button class="btn-secondary" id="btn-msg-reset" type="button">重置</button>
+            <button class="btn-primary" id="btn-msg-query" type="button">查询</button>
+          </div>
+        </div>
+
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
+                <th class="col-check"><input type="checkbox" id="check-all" title="全选" /></th>
                 <th class="col-id">ID</th>
                 <th>发送者</th>
                 <th>类型</th>
@@ -152,6 +236,48 @@
       <div class="modal-actions">
         <button class="btn-secondary" id="confirm-cancel" type="button">取消</button>
         <button class="btn-danger" id="confirm-ok" type="button">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== 创建测试用户弹窗 ===================== -->
+  <div class="modal-overlay hidden" id="create-modal">
+    <div class="modal">
+      <div class="modal-head">
+        <h3>创建测试用户</h3>
+        <button class="btn-icon" id="btn-create-close" title="关闭" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <div id="create-form-wrap">
+        <div class="field">
+          <label for="create-username">用户名</label>
+          <input id="create-username" type="text" placeholder="2-20 个字符" maxlength="20" />
+        </div>
+        <div class="field">
+          <label for="create-password">密码</label>
+          <input id="create-password" type="text" placeholder="6-64 个字符" maxlength="64" />
+        </div>
+        <div class="field">
+          <label for="create-nickname">昵称 <span class="optional">选填，默认同用户名</span></label>
+          <input id="create-nickname" type="text" placeholder="昵称" maxlength="20" />
+        </div>
+        <div class="modal-actions">
+          <button class="btn-secondary" id="btn-create-cancel" type="button">取消</button>
+          <button class="btn-primary" id="btn-create-submit" type="button">创建</button>
+        </div>
+      </div>
+
+      <div id="create-result-wrap" class="hidden">
+        <p class="result-tip">测试用户创建成功，请保存以下明文密码（用于分发/登录测试）：</p>
+        <div class="password-display">
+          <code id="create-result-password"></code>
+          <button class="btn-secondary btn-sm" id="btn-copy-password" type="button">复制</button>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-primary btn-block" id="btn-create-done" type="button">完成</button>
+        </div>
       </div>
     </div>
   </div>

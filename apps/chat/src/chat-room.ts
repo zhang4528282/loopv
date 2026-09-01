@@ -24,6 +24,20 @@ export class ChatRoom extends DurableObject {
   }
 
   async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+
+    // 内部广播请求（来自 admin API，用于实时推送撤回/删除事件）
+    if (url.pathname === "/broadcast" && request.method === "POST") {
+      try {
+        const payload = await request.json();
+        this.broadcast(payload);
+      } catch (e) {
+        console.error("broadcast error:", e);
+      }
+      return new Response("ok");
+    }
+
+    // WebSocket 升级
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
 
@@ -188,11 +202,19 @@ export class ChatRoom extends DurableObject {
       return;
     }
 
-    await this.env.DB.prepare(`UPDATE messages SET deleted = 1 WHERE id = ?1`)
-      .bind(messageId)
+    // 管理员撤回他人消息标记为 2（管理员撤回），否则 1（用户撤回）
+    const deletedValue =
+      user.isAdmin && (msg.user_id as number) !== user.userId ? 2 : 1;
+
+    await this.env.DB.prepare(`UPDATE messages SET deleted = ?1 WHERE id = ?2`)
+      .bind(deletedValue, messageId)
       .run();
 
-    this.broadcast({ type: "delete", id: messageId });
+    this.broadcast({
+      type: "recall",
+      id: messageId,
+      by: deletedValue === 2 ? "admin" : "user",
+    });
   }
 
   // 根据 token 查用户
