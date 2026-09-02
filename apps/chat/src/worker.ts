@@ -444,14 +444,24 @@ app.post("/api/user/avatar", async (c) => {
 app.get("/api/history", async (c) => {
   const limit = Math.min(parseInt(c.req.query("limit") || "50"), 200);
   const before = parseInt(c.req.query("before") || "0");
+  const beforeId = parseInt(c.req.query("before_id") || "0");
 
   let query;
-  if (before > 0) {
+  if (before > 0 && beforeId > 0) {
+    // 复合游标 (created_at, id)：用于加载更早消息，避免同一秒多条消息漏取/重复
+    query = c.env.DB.prepare(
+      `SELECT id, user_id, nickname, avatar_url, type, content, media_url, media_type, deleted, created_at
+       FROM messages WHERE deleted != 3 AND (created_at < ?1 OR (created_at = ?1 AND id < ?2))
+       ORDER BY created_at DESC, id DESC LIMIT ?3`
+    ).bind(before, beforeId, limit);
+  } else if (before > 0) {
+    // 向后兼容：仅 before 游标
     query = c.env.DB.prepare(
       `SELECT id, user_id, nickname, avatar_url, type, content, media_url, media_type, deleted, created_at
        FROM messages WHERE deleted != 3 AND created_at < ?1 ORDER BY created_at DESC LIMIT ?2`
     ).bind(before, limit);
   } else {
+    // 无游标：取最新消息
     query = c.env.DB.prepare(
       `SELECT id, user_id, nickname, avatar_url, type, content, media_url, media_type, deleted, created_at
        FROM messages WHERE deleted != 3 ORDER BY created_at DESC LIMIT ?1`

@@ -12,6 +12,7 @@ const NOTICE_KEY = "loopv_chat_notice";
 const SOUND_KEY = "loopv_chat_sound";
 const MSG_SOUND_KEY = "loopv_chat_msg_sound";
 const MAX_HISTORY = 50;
+const OLDER_PAGE = 20;
 
 // 常用时区（中文名 + IANA 标识，UTC 偏移由 Intl 动态计算）
 const TIMEZONES = [
@@ -62,6 +63,9 @@ const state = {
   onlineCount: 0,
   hasConnectedOnce: false, // 是否经历过重连（重连成功需自动补齐历史）
   inviteEnabled: false, // 后端是否开启邀请码验证（决定注册界面是否显示邀请码框）
+  hasOlder: false, // 是否还有更早历史
+  loadingOlder: false, // 加载更多进行中锁
+  olderDone: false, // 是否已提示过「没有更早的消息」（防重复 toast）
 };
 
 // ========== DOM 引用 ==========
@@ -456,6 +460,8 @@ function enterChat() {
 // ========== 历史消息 ==========
 async function loadHistory() {
   try {
+    state.loadingOlder = false;
+    state.olderDone = false;
     const data = await api(`/api/history?limit=${MAX_HISTORY}`);
     // 清空旧消息，避免重复追加
     dom.messages.innerHTML = "";
@@ -467,9 +473,53 @@ async function loadHistory() {
     } else {
       dom.messagesEmpty.classList.remove("hidden");
     }
+    // 拉满 50 条说明可能还有更早的；不足则到底
+    state.hasOlder = (data.messages || []).length >= MAX_HISTORY;
     scrollToBottom(true);
   } catch (err) {
     toast(err.message, "error");
+  }
+}
+
+// 触顶/下拉加载更早消息（一次 20 条），保持当前阅读位置不跳动
+async function loadOlder() {
+  if (!state.hasOlder || state.loadingOlder) return;
+  const first = dom.messages.querySelector(".msg-row");
+  if (!first) { state.hasOlder = false; return; }
+  const before = first.dataset.createdAt;
+  const beforeId = first.dataset.id;
+  if (!before) { state.hasOlder = false; return; }
+  state.loadingOlder = true;
+  try {
+    const data = await api(`/api/history?limit=${OLDER_PAGE}&before=${before}&before_id=${beforeId}`);
+    const msgs = data.messages || [];
+    if (!msgs.length) {
+      state.hasOlder = false;
+      if (!state.olderDone) {
+        state.olderDone = true;
+        toast("没有更早的消息了");
+      }
+      return;
+    }
+    // 顶部插入前记录滚动位置，插入后修正 scrollTop 使视口内容不跳动
+    const el = dom.messages;
+    const prevHeight = el.scrollHeight;
+    const prevTop = el.scrollTop;
+    const prevSmooth = el.style.scrollBehavior;
+    el.style.scrollBehavior = "auto";
+    // msgs 已按时间升序；倒序逐个插到当前最早消息之前，保证最终 DOM 顺序升序
+    for (let i = msgs.length - 1; i >= 0; i--) appendMessage(msgs[i], false, true);
+    el.scrollTop = prevTop + (el.scrollHeight - prevHeight);
+    el.style.scrollBehavior = prevSmooth;
+    state.hasOlder = msgs.length >= OLDER_PAGE;
+    if (!state.hasOlder && !state.olderDone) {
+      state.olderDone = true;
+      toast("没有更早的消息了");
+    }
+  } catch (err) {
+    toast(err.message || "加载更早消息失败", "error");
+  } finally {
+    state.loadingOlder = false;
   }
 }
 
@@ -752,7 +802,7 @@ function closeOnlinePanel() {
 }
 
 // ========== 消息渲染 ==========
-function appendMessage(msg, animate) {
+function appendMessage(msg, animate, prepend) {
   const type = msg.msg_type || msg.type || "text";
   const content = msg.content || "";
   const mediaUrl = msg.media_url || null;
@@ -767,6 +817,7 @@ function appendMessage(msg, animate) {
   row.className = `msg-row${isOwn ? " own" : ""}`;
   row.dataset.id = msg.id;
   row.dataset.userId = msg.user_id;
+  row.dataset.createdAt = msg.created_at;
   if (!animate) row.style.animation = "none";
 
   // 头像
@@ -825,7 +876,14 @@ function appendMessage(msg, animate) {
   body.appendChild(timeRow);
 
   row.appendChild(body);
-  dom.messages.appendChild(row);
+  if (prepend) {
+    // 插到当前最早一条真实消息之前（.messages-empty 是空态占位，用 .msg-row 选择器跳过）
+    const anchor = dom.messages.querySelector(".msg-row");
+    if (anchor) dom.messages.insertBefore(row, anchor);
+    else dom.messages.appendChild(row);
+  } else {
+    dom.messages.appendChild(row);
+  }
 }
 
 // 更新页面上某用户所有消息的昵称/头像（资料修改后即时刷新，无需刷新页面）
@@ -1349,6 +1407,36 @@ function bindEvents() {
       }
     }
   });
+
+  // 历史消息加载更多：容器滚动到顶自动加载（桌面滚轮上滚到顶场景）
+  dom.messages.addEventListener("scroll", () => {
+    if (dom.messages.scrollTop <= 2 && state.hasOlder && !state.loadingOlder) loadOlder();
+  });
+
+  // 移动端触顶后继续下拉手势（scroll 到顶后不再触发 scroll 事件的兜底）
+  let pullStartY = 0;
+  dom.messages.addEventListener(
+    "touchstart",
+    (e) => {
+      pullStartY = e.touches[0].clientY;
+    },
+    { passive: true }
+  );
+  dom.messages.addEventListener(
+    "touchmove",
+    (e) => {
+      // 仅在已经滚动到最顶部、且手势向下（下拉）时接管，触发加载更早消息
+      if (dom.messages.scrollTop <= 2 && state.hasOlder && !state.loadingOlder) {
+        const deltaY = e.touches[0].clientY - pullStartY;
+        if (deltaY > 56) {
+          e.preventDefault();
+          pullStartY = e.touches[0].clientY; // 复位，避免同一次手势连续触发
+          loadOlder();
+        }
+      }
+    },
+    { passive: false }
+  );
 }
 
 // ========== 启动 ==========
