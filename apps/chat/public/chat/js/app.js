@@ -1013,6 +1013,15 @@ function handleFileSelected(file) {
     return;
   }
 
+  // 按类型大小预检（与后端一致）：图片 10MB / 音频 20MB / 视频 50MB，超限即时提示
+  const LIMIT = { image: 10, audio: 20, video: 50 };
+  const fileSizeMB = file.size / (1024 * 1024);
+  if (fileSizeMB > LIMIT[type]) {
+    const label = type === "image" ? "图片" : type === "audio" ? "音频" : "视频";
+    toast(`${label}文件不能超过 ${LIMIT[type]}MB`, "error");
+    return;
+  }
+
   state.pendingFile = { file, type };
 
   if (type === "image") {

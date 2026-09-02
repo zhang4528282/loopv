@@ -47,6 +47,20 @@ const DANGEROUS_EXTS = new Set([
   "php", "shtml", "cgi", "jsp", "asp", "aspx",
 ]);
 
+// 上传大小限制（按类型，单位字节）：头像 2MB / 图片 10MB / 音频 20MB / 视频 50MB
+const UPLOAD_LIMIT = {
+  avatar: 2 * 1024 * 1024,
+  image: 10 * 1024 * 1024,
+  audio: 20 * 1024 * 1024,
+  video: 50 * 1024 * 1024,
+};
+const UPLOAD_LIMIT_MB: Record<string, number> = {
+  avatar: 2,
+  image: 10,
+  audio: 20,
+  video: 50,
+};
+
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 app.use(
@@ -386,9 +400,9 @@ app.post("/api/user/avatar", async (c) => {
     return c.json({ error: "No file" }, 400);
   }
 
-  const maxSize = parseInt(c.env.MAX_UPLOAD_SIZE || "52428800");
+  const maxSize = UPLOAD_LIMIT.avatar;
   if (file.size > maxSize) {
-    return c.json({ error: "文件过大" }, 413);
+    return c.json({ error: "头像不能超过 2MB" }, 413);
   }
 
   // 仅允许图片（拒绝 SVG，防止 XSS）
@@ -489,12 +503,19 @@ app.post("/api/upload", async (c) => {
     return c.json({ error: "No file" }, 400);
   }
 
-  const maxSize = parseInt(c.env.MAX_UPLOAD_SIZE || "52428800");
-  if ((file as File).size > maxSize) {
-    return c.json({ error: "文件过大" }, 413);
+  const contentType = ((file as File).type || "").toLowerCase();
+  // 按类型限制大小：图片 10MB / 音频 20MB / 视频 50MB
+  let limitKey: "image" | "audio" | "video" | null = null;
+  if (contentType.startsWith("image/")) limitKey = "image";
+  else if (contentType.startsWith("audio/")) limitKey = "audio";
+  else if (contentType.startsWith("video/")) limitKey = "video";
+  if (!limitKey) {
+    return c.json({ error: "仅支持图片、视频、音频文件" }, 400);
+  }
+  if ((file as File).size > UPLOAD_LIMIT[limitKey]) {
+    return c.json({ error: `文件过大，${limitKey === "image" ? "图片" : limitKey === "audio" ? "音频" : "视频"}不能超过 ${UPLOAD_LIMIT_MB[limitKey]}MB` }, 413);
   }
 
-  const contentType = ((file as File).type || "").toLowerCase();
   if (DANGEROUS_TYPES.has(contentType)) {
     return c.json({ error: "不支持的文件类型" }, 400);
   }
