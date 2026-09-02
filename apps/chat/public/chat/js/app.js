@@ -1137,6 +1137,10 @@ function bindEvents() {
     // 防止快速重复点击
     dom.btnRefresh.disabled = true;
     dom.btnRefresh.classList.add("spinning");
+    // 同时请求服务端重新广播在线成员列表（网络/WS 异常后状态可能不同步）
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+      state.ws.send(JSON.stringify({ type: "refresh_online" }));
+    }
     await loadHistory();
     toast("消息已刷新", "success");
     // 旋转至少保持 600ms，让反馈清晰可见

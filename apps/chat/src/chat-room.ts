@@ -93,6 +93,11 @@ export class ChatRoom extends DurableObject {
           await this.handleDelete(ws, data.id);
           break;
         }
+        case "refresh_online": {
+          // 客户端手动刷新在线成员列表（兜底，网络/WS 异常后状态可能不同步）
+          this.broadcastOnlineUsers();
+          break;
+        }
       }
     } catch (e) {
       console.error("webSocketMessage error:", e);
