@@ -233,3 +233,7 @@
 #### 新增
 - **viewport 禁止缩放**：chat 页面 viewport meta 增加 `maximum-scale=1.0, user-scalable=no`
 - **手势阻止兜底**：JS 阻止 `gesturestart`（iOS 捏合）、多指 `touchmove`、桌面双击缩放事件，彻底禁用用户手动缩放
+
+### 魅族浏览器键盘空白修复
+#### 修复
+- **输入框与键盘间大片空白**：魅族等旧内核浏览器不支持 `100dvh`（回退 `100vh`），且虚拟键盘弹出时不收缩 layout viewport，flex 输入区下方残留空白。`.app` 高度改为百分比链路 + CSS 变量 `--app-h` 兜底，JS 监听 `visualViewport` resize 同步精确可视高度（px），键盘弹出时输入框紧贴键盘；桌面端与主流移动端无回归

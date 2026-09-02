@@ -1343,6 +1343,14 @@ function bindEvents() {
 }
 
 // ========== 启动 ==========
+// 虚拟键盘适配：魅族等旧内核浏览器键盘弹出时不收缩 layout viewport，
+// 用 visualViewport 高度同步 --app-h（px），避免输入框与键盘之间出现空白
+function syncAppHeight() {
+  const vv = window.visualViewport;
+  const h = vv ? vv.height : window.innerHeight;
+  document.documentElement.style.setProperty("--app-h", `${h}px`);
+}
+
 function init() {
   bindEvents();
   renderEmojiGrid();
@@ -1352,6 +1360,13 @@ function init() {
   tryRestoreSession();
   disableUserZoom(); // 禁用页面手动缩放（双指捏合/双击）
 }
+
+// 视口变化（键盘弹出/收起、缩放等）时同步容器高度
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", syncAppHeight);
+}
+window.addEventListener("resize", syncAppHeight);
+syncAppHeight();
 
 // 禁用用户手动缩放界面（配合 viewport user-scalable=no）
 function disableUserZoom() {

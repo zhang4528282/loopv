@@ -356,8 +356,8 @@ svg {
 .app {
   display: flex;
   flex-direction: column;
-  height: 100vh; /* 兜底 */
-  height: 100dvh;
+  height: 100%; /* 百分比链路：随 html/body 实际高度收缩（旧内核键盘弹出可随 layout viewport 收缩） */
+  height: var(--app-h, 100dvh); /* JS 同步 visualViewport 高度（px）覆盖；未设置时现代浏览器回退 100dvh */
   max-width: 1140px;
   margin: 0 auto;
   background: var(--bg);
