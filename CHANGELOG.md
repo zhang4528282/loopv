@@ -155,8 +155,14 @@
 ## 2026-09-02
 
 ### 在线状态下线同步修复
-
 #### 修复
 - **下线状态不同步（根因修复）**：`webSocketClose` 触发时刚关闭的 socket 仍处于 CLOSING 状态，`ctx.getWebSockets()` 仍返回它（官方文档确认），`getOnlineUsers()` 会把它计入在线列表并广播出去，之后无事件再触发重算，陈旧列表在其他客户端永久残留。`ws.close()` 只修复了 socket 生命周期（连接不再卡在 CLOSING），未修复广播内容竞态
 - **修复方案**：`getOnlineUsers(exclude?)` / `broadcastOnlineUsers(exclude?)` 支持排除参数，`webSocketClose` 广播时传入正在关闭的 `ws` 排除自身，确保离线用户被立即移除；多标签页场景只排除关闭的连接，另一连接保持在线，不受影响
 - **补充**：compat date < 2026-04-07 时 `webSocketClose` 仍需手动 `ws.close(code, reason)` 完成关闭握手（`web_socket_auto_reply_to_close` 默认未启用）
+
+### 上下线通知功能
+#### 新增
+- **上下线小提示**：有用户上线/下线时，会话界面消息区顶部居中弹出胶囊提示「xxx 上线了/下线了」，3.5 秒后自动淡出消失，多条提示可堆叠，尊重 `prefers-reduced-motion`；自己的上下线事件自动过滤
+- **提示音效**：Web Audio API 生成短音（无需音频文件），上线升调（660→880Hz）、下线降调（880→660Hz），带防爆音包络、复用单个 AudioContext
+- **设置开关**：设置弹窗新增「上下线提醒」「提示音效」两个 switch 开关，**默认关闭**，持久化到 localStorage
+- **后端事件广播**：`handleAuth` 仅当用户首次上线（无其他在线连接）广播 `user_online`，`webSocketClose` 仅当用户完全下线（排除自身后无剩余连接）广播 `user_offline`，多标签页不重复广播

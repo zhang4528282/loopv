@@ -121,8 +121,20 @@ export class ChatRoom extends DurableObject {
       })
     );
 
-    // 广播最新在线用户列表
+    // 判断该用户是否为新上线（之前无任何在线连接）
+    const existed = this.getOnlineUsers(ws).some((u) => u.userId === user.userId);
     this.broadcastOnlineUsers();
+    // 仅当用户第一次上线时广播上线事件（多标签页重复连接不重复广播）
+    if (!existed) {
+      this.broadcast({
+        type: "user_online",
+        user: {
+          userId: user.userId,
+          nickname: user.nickname,
+          avatarUrl: user.avatarUrl,
+        },
+      });
+    }
   }
 
   // 获取当前在线用户（按 userId 去重，一个用户可多端连接）
@@ -340,6 +352,29 @@ export class ChatRoom extends DurableObject {
     // 连接断开后广播最新在线用户列表
     // 排除自身：CLOSING 状态下 getWebSockets() 仍可能返回该 socket，不排除会导致离线用户残留
     this.broadcastOnlineUsers(ws);
+
+    // 读取该连接的用户信息（CLOSING 阶段 attachment 仍可读，用 try 包裹）
+    try {
+      const closing = ws.deserializeAttachment() as UserInfo | undefined;
+      if (closing) {
+        // 排除自身后若该用户已无其他连接，说明完全下线，广播下线事件
+        const stillOnline = this.getOnlineUsers(ws).some(
+          (u) => u.userId === closing.userId
+        );
+        if (!stillOnline) {
+          this.broadcast({
+            type: "user_offline",
+            user: {
+              userId: closing.userId,
+              nickname: closing.nickname,
+              avatarUrl: closing.avatarUrl,
+            },
+          });
+        }
+      }
+    } catch {
+      // 无法读取附件信息则跳过
+    }
   }
 
   async webSocketError(ws: WebSocket, error: Error): Promise<void> {

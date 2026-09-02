@@ -143,6 +143,8 @@
 
       <div class="chat-body">
         <div class="chat-main">
+          <!-- 上下线提示条 -->
+          <div id="presence-notices" class="presence-notices" aria-live="polite"></div>
           <!-- 消息区 -->
           <main class="messages" id="messages">
         <div class="messages-empty" id="messages-empty">
@@ -243,6 +245,28 @@
       <div class="field">
         <label for="timezone-select">时区</label>
         <select id="timezone-select"></select>
+      </div>
+
+      <div class="field">
+        <label class="setting-switch" for="setting-notice">
+          <span>上下线提醒</span>
+          <span class="switch-control">
+            <input type="checkbox" id="setting-notice" class="switch-input" />
+            <span class="switch-track" aria-hidden="true"></span>
+            <span class="switch-thumb" aria-hidden="true"></span>
+          </span>
+        </label>
+      </div>
+
+      <div class="field">
+        <label class="setting-switch" for="setting-sound">
+          <span>提示音效</span>
+          <span class="switch-control">
+            <input type="checkbox" id="setting-sound" class="switch-input" />
+            <span class="switch-track" aria-hidden="true"></span>
+            <span class="switch-thumb" aria-hidden="true"></span>
+          </span>
+        </label>
       </div>
 
       <div class="modal-actions">

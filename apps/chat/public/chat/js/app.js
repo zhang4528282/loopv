@@ -8,6 +8,8 @@
 const TOKEN_KEY = "loopv_chat_token";
 const USER_KEY = "loopv_chat_user";
 const TZ_KEY = "loopv_chat_timezone";
+const NOTICE_KEY = "loopv_chat_notice";
+const SOUND_KEY = "loopv_chat_sound";
 const MAX_HISTORY = 50;
 
 // 常用时区（中文名 + IANA 标识，UTC 偏移由 Intl 动态计算）
@@ -85,6 +87,7 @@ const dom = {
   meAvatar: $("#me-avatar"),
   meNickname: $("#me-nickname"),
   connDot: $("#conn-dot"),
+  presenceNotices: $("#presence-notices"),
 
   // 输入
   msgInput: $("#msg-input"),
@@ -109,6 +112,8 @@ const dom = {
   btnCloseSettings: $("#btn-close-settings"),
   nicknameInput: $("#nickname-input"),
   timezoneSelect: $("#timezone-select"),
+  settingNotice: $("#setting-notice"),
+  settingSound: $("#setting-sound"),
   btnSaveSettings: $("#btn-save-settings"),
   settingsAvatarPreview: $("#settings-avatar-preview"),
   btnAvatarUpload: $("#btn-avatar-upload"),
@@ -155,6 +160,16 @@ function api(path, options = {}) {
 // 读取用户设置的时区，默认东八区（北京时间）
 function getTimezone() {
   return localStorage.getItem(TZ_KEY) || "Asia/Shanghai";
+}
+
+// 读取用户设置：上下线提醒（默认关闭）
+function getNoticeEnabled() {
+  return localStorage.getItem(NOTICE_KEY) === "1";
+}
+
+// 读取用户设置：提示音效（默认关闭）
+function getSoundEnabled() {
+  return localStorage.getItem(SOUND_KEY) === "1";
 }
 
 // 时间格式化：秒级时间戳 → "2026年08月07日 14:30"（按用户设置的时区）
@@ -510,6 +525,13 @@ function handleWsMessage(data) {
       renderOnlineUsers(data.users || [], data.count);
       break;
 
+    case "user_online":
+    case "user_offline":
+      if (data.user && Number(data.user.userId) !== Number(state.user?.id)) {
+        showPresenceNotice(data.type === "user_online" ? "online" : "offline", data.user);
+      }
+      break;
+
     case "profile_updated":
       refreshMessagesOfUser(data.userId, data.nickname, data.avatarUrl);
       break;
@@ -540,6 +562,63 @@ function scheduleReconnect() {
     if (state.token) connectWs();
   }, state.reconnectDelay);
   state.reconnectDelay = Math.min(state.reconnectDelay * 2, 15000);
+}
+
+// ========== 上下线提示 ==========
+// 显示一条上下线提示（3.5 秒后淡出移除），开关开启时同时播提示音
+function showPresenceNotice(kind, user) {
+  if (!getNoticeEnabled()) return;
+
+  const name = user.nickname || "匿名";
+  const tip = document.createElement("div");
+  tip.className = "presence-tip" + (kind === "online" ? " online" : " offline");
+  tip.textContent = kind === "online" ? `${name} 上线了` : `${name} 下线了`;
+  dom.presenceNotices.appendChild(tip);
+
+  // 3.5 秒后淡出移除
+  setTimeout(() => {
+    tip.classList.add("out");
+    // 动画结束后移除（动画被禁用等情况下用兜底超时移除）
+    const remove = () => tip.remove();
+    tip.addEventListener("animationend", remove, { once: true });
+    setTimeout(remove, 600);
+  }, 3500);
+
+  // 提示音效
+  if (getSoundEnabled()) playPresenceSound(kind);
+}
+
+let _presenceAudioCtx = null;
+
+// 用 Web Audio API 生成简短提示音（无需音频文件）：上线升调、下线降调
+function playPresenceSound(kind) {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    // 复用同一个 AudioContext（用户已与页面交互过，可正常发声）
+    if (!_presenceAudioCtx) _presenceAudioCtx = new Ctx();
+    const ctx = _presenceAudioCtx;
+    if (ctx.state === "suspended") ctx.resume();
+
+    const notes = kind === "online" ? [660, 880] : [880, 660];
+    const now = ctx.currentTime;
+    for (let i = 0; i < notes.length; i++) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = notes[i];
+      const start = now + i * 0.14;
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.12, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.12);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.13);
+    }
+  } catch {
+    /* 音效播放失败静默忽略 */
+  }
 }
 
 // ========== 在线成员 ==========
@@ -951,6 +1030,8 @@ function autoResize() {
 function openSettings() {
   dom.nicknameInput.value = state.user?.nickname || "";
   dom.timezoneSelect.value = getTimezone();
+  dom.settingNotice.checked = getNoticeEnabled();
+  dom.settingSound.checked = getSoundEnabled();
   renderSettingsAvatar();
   dom.settingsModal.classList.remove("hidden");
 }
@@ -992,6 +1073,10 @@ async function saveSettings() {
     // 保存时区
     localStorage.setItem(TZ_KEY, dom.timezoneSelect.value);
     refreshMessageTimes();
+
+    // 保存上下线提醒 / 提示音效设置
+    localStorage.setItem(NOTICE_KEY, dom.settingNotice.checked ? "1" : "0");
+    localStorage.setItem(SOUND_KEY, dom.settingSound.checked ? "1" : "0");
 
     localStorage.setItem(USER_KEY, JSON.stringify(state.user));
     renderMe();

@@ -377,6 +377,7 @@ svg {
   flex: 1;
   min-width: 0;
   min-height: 0;
+  position: relative; /* 作为上下线提示条的定位基准 */
 }
 
 /* ============================================================
@@ -1044,6 +1045,72 @@ svg {
 }
 
 /* ============================================================
+   上下线提示条
+   ============================================================ */
+.presence-notices {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30; /* 高于消息，低于弹窗（100+） */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none; /* 不挡消息操作 */
+}
+
+.presence-tip {
+  padding: 6px 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  color: #2e5d4f;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  max-width: min(320px, calc(100vw - 48px));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: tip-in 0.25s ease-out;
+}
+
+.presence-tip.out {
+  animation: tip-out 0.4s ease-in forwards;
+}
+
+@keyframes tip-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes tip-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .presence-tip,
+  .presence-tip.out {
+    animation: none;
+  }
+  .presence-tip.out {
+    opacity: 0;
+  }
+}
+
+/* ============================================================
    Emoji 选择器
    ============================================================ */
 .emoji-picker {
@@ -1215,6 +1282,77 @@ svg {
 
 .modal-actions {
   margin-top: 20px;
+}
+
+/* 设置弹窗开关（上下线提醒 / 提示音效） */
+.field label.setting-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.setting-switch .switch-control {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.setting-switch .switch-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  border: none;
+  background: none;
+  border-radius: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.setting-switch .switch-track {
+  display: block;
+  width: 42px;
+  height: 24px;
+  border-radius: 24px;
+  background: #e5e7eb;
+  border: 1px solid var(--border);
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.setting-switch .switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+
+.setting-switch .switch-input:checked ~ .switch-track {
+  background: #2e5d4f;
+  border-color: #2e5d4f;
+}
+
+.setting-switch .switch-input:checked ~ .switch-thumb {
+  transform: translateX(18px);
+}
+
+.setting-switch .switch-input:focus-visible ~ .switch-track {
+  outline: 2px solid #2e5d4f;
+  outline-offset: 2px;
 }
 
 /* ============================================================
