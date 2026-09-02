@@ -806,8 +806,8 @@ function toggleBan(user) {
   confirmAction(
     banned ? "解封用户" : "封禁用户",
     banned
-      ? `确定要解封用户「${name}」吗？解封后该用户可重新登录和发言。`
-      : `确定要封禁用户「${name}」吗？封禁后该用户将无法登录和发言。`,
+      ? `确定要解封用户「${name}」吗？`
+      : `确定要封禁用户「${name}」吗？`,
     async () => {
       try {
         await api(`/api/admin/users/${user.id}/ban`, {
@@ -827,7 +827,7 @@ function confirmDeleteUser(user) {
   const name = user.nickname || user.username;
   confirmAction(
     "删除用户",
-    `确定要删除用户「${name}」吗？该操作不可恢复，其所有会话将一并失效。`,
+    `确定要删除用户「${name}」吗？`,
     async () => {
       try {
         await api(`/api/admin/users/${user.id}`, { method: "DELETE" });
@@ -845,7 +845,7 @@ function confirmDeleteUser(user) {
 function confirmRecallMessage(m) {
   confirmAction(
     "撤回消息",
-    `确定要撤回消息 #${m.id} 吗？撤回后聊天室将显示「已被管理员撤回」。`,
+    `确定要撤回消息 #${m.id} 吗？`,
     async () => {
       try {
         await api(`/api/admin/messages/${m.id}/recall`, { method: "POST" });
@@ -862,7 +862,7 @@ function confirmRecallMessage(m) {
 function confirmDeleteMessage(m) {
   confirmAction(
     "删除消息",
-    `确定要删除消息 #${m.id} 吗？删除后该消息将从聊天室移除。`,
+    `确定要删除消息 #${m.id} 吗？`,
     async () => {
       try {
         await api(`/api/admin/messages/${m.id}/delete`, { method: "POST" });
@@ -881,7 +881,7 @@ function confirmBatchDelete() {
   if (!ids.length) return;
   confirmAction(
     "批量删除",
-    `确定要删除选中的 ${ids.length} 条消息吗？删除后将全部从聊天室移除。`,
+    `确定要删除选中的 ${ids.length} 条消息吗？`,
     async () => {
       try {
         await api("/api/admin/messages/batch-delete", { method: "POST", body: { ids } });

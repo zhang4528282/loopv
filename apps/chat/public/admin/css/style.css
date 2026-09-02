@@ -992,6 +992,11 @@ input[type="checkbox"] {
   word-break: break-word;
 }
 
+/* 确认弹窗标题居中（仅确认弹窗，不影响创建用户弹窗等） */
+#confirm-modal h3 {
+  text-align: center;
+}
+
 .modal-actions {
   display: flex;
   gap: 10px;
