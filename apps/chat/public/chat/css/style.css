@@ -735,6 +735,7 @@ svg {
   max-width: 80%;
   align-items: flex-start;
   animation: msg-in 0.22s ease-out;
+  touch-action: manipulation; /* 允许滚动/缩放手势，长按不阻塞滚动 */
 }
 
 .msg-row.own {
@@ -779,6 +780,11 @@ svg {
   flex-direction: column;
   gap: 4px;
   min-width: 0;
+  align-items: flex-start; /* 他人消息气泡靠左 */
+}
+
+.msg-row.own .msg-body {
+  align-items: flex-end; /* 自己消息气泡靠右 */
 }
 
 .msg-meta {
@@ -802,6 +808,8 @@ svg {
 }
 
 .msg-bubble {
+  width: fit-content; /* 宽度由内容决定 */
+  max-width: 100%; /* 仅限制超长文本溢出，交由行级 max-width 约束 */
   background: var(--bg-card);
   border: 1px solid var(--border);
   padding: 10px 14px;
@@ -891,26 +899,54 @@ svg {
   color: #9ca3af;
 }
 
-/* 撤回按钮 —— 常显示，避免 hover 显示导致布局抖动 */
+/* 撤回按钮 —— 图标化，默认隐藏，长按消息行后显示 */
 .msg-actions {
   display: flex;
   gap: 6px;
 }
 
 .btn-delete {
+  display: none;
   border: none;
   background: transparent;
   color: var(--text-dim);
-  font-size: 12px;
-  padding: 2px 6px;
+  padding: 4px;
   border-radius: 6px;
-  align-self: center;
-  transition: all 0.15s;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.btn-delete svg {
+  width: 16px;
+  height: 16px;
+}
+
+.btn-delete.show {
+  display: flex;
+  animation: recall-in 0.18s ease-out;
+}
+
+@keyframes recall-in {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .btn-delete:hover {
   background: rgba(0, 0, 0, 0.06);
   color: var(--danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-delete.show {
+    animation: none;
+  }
 }
 
 /* 文件消息 */
@@ -1424,6 +1460,49 @@ svg {
 .setting-switch .switch-input:focus-visible ~ .switch-track {
   outline: 2px solid #2e5d4f;
   outline-offset: 2px;
+}
+
+/* ============================================================
+   撤回确认弹窗
+   ============================================================ */
+.confirm-text {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: transform 0.12s, box-shadow 0.18s, opacity 0.18s;
+}
+
+.btn-danger:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(239, 68, 68, 0.3);
+}
+
+.btn-danger:active {
+  transform: translateY(0);
+}
+
+.btn-danger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 /* ============================================================

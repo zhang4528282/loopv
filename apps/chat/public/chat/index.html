@@ -294,6 +294,20 @@
     </div>
   </div>
 
+  <!-- 撤回确认弹窗 -->
+  <div class="modal-overlay hidden" id="confirm-modal">
+    <div class="modal">
+      <div class="modal-head">
+        <h3>撤回消息</h3>
+      </div>
+      <p class="confirm-text">确定要撤回这条消息吗？撤回后对方也能看到撤回状态。</p>
+      <div class="confirm-actions">
+        <button class="btn-secondary" id="btn-confirm-cancel" type="button">取消</button>
+        <button class="btn-danger" id="btn-confirm-ok" type="button">确认撤回</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast 提示 -->
   <div class="toast" id="toast" role="status"></div>
 

@@ -126,6 +126,9 @@ const dom = {
   btnLogout: $("#btn-logout"),
   btnRefresh: $("#btn-refresh"),
   toast: $("#toast"),
+  confirmModal: $("#confirm-modal"),
+  btnConfirmOk: $("#btn-confirm-ok"),
+  btnConfirmCancel: $("#btn-confirm-cancel"),
 
   // 在线成员
   sidebar: $("#sidebar"),
@@ -762,12 +765,21 @@ function appendMessage(msg, animate) {
     const actions = document.createElement("div");
     actions.className = "msg-actions";
     if (!isRecalled) {
+      // 撤回图标按钮：默认隐藏，长按消息行后显示
       const delBtn = document.createElement("button");
       delBtn.className = "btn-delete";
-      delBtn.textContent = "撤回";
+      delBtn.type = "button";
       delBtn.title = "撤回此消息";
-      delBtn.onclick = () => deleteMessage(msg.id);
+      delBtn.setAttribute("aria-label", "撤回此消息");
+      delBtn.innerHTML =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+      delBtn.onclick = (e) => {
+        e.stopPropagation();
+        confirmRecall(msg.id);
+      };
       actions.appendChild(delBtn);
+      // 长按自己未撤回的消息显示撤回按钮
+      bindLongPressReveal(row, delBtn);
     }
     meta.appendChild(actions);
   }
@@ -1018,6 +1030,57 @@ async function sendPendingFile() {
 }
 
 // ========== 撤回 ==========
+let _confirmCallback = null; // 撤回确认弹窗的待执行回调
+
+// 长按自己的消息行（约 550ms）显示撤回按钮
+function bindLongPressReveal(row, btn) {
+  const HOLD_MS = 550;
+  let timer = null;
+
+  const start = () => {
+    if (btn.classList.contains("show")) return; // 已显示则无需重新计时
+    clearTimeout(timer);
+    timer = setTimeout(() => showRecallButton(btn), HOLD_MS);
+  };
+
+  const cancel = () => {
+    clearTimeout(timer);
+    timer = null;
+  };
+
+  // 优先使用 Pointer Events（统一鼠标/触摸/笔），滚动时浏览器会触发 pointercancel 取消计时
+  if (window.PointerEvent) {
+    row.addEventListener("pointerdown", start);
+    row.addEventListener("pointerup", cancel);
+    row.addEventListener("pointercancel", cancel);
+    row.addEventListener("pointerleave", cancel);
+  } else {
+    // 兼容旧浏览器
+    row.addEventListener("touchstart", start, { passive: true });
+    row.addEventListener("touchend", cancel);
+    row.addEventListener("touchcancel", cancel);
+  }
+}
+
+// 显示撤回按钮（2 秒后无交互自动隐藏）
+function showRecallButton(btn) {
+  if (btn.classList.contains("show")) return;
+  btn.classList.add("show");
+  clearTimeout(btn._hideTimer);
+  btn._hideTimer = setTimeout(() => btn.classList.remove("show"), 2000);
+}
+
+// 打开撤回确认弹窗
+function confirmRecall(messageId) {
+  dom.confirmModal.classList.remove("hidden");
+  _confirmCallback = () => deleteMessage(messageId);
+}
+
+function closeConfirmModal() {
+  dom.confirmModal.classList.add("hidden");
+  _confirmCallback = null;
+}
+
 async function deleteMessage(id) {
   if (state.ws && state.ws.readyState === WebSocket.OPEN) {
     state.ws.send(JSON.stringify({ type: "delete", id }));
@@ -1229,9 +1292,24 @@ function bindEvents() {
     if (e.key === "Escape") {
       closePreview();
       dom.settingsModal.classList.add("hidden");
+      closeConfirmModal();
       dom.emojiPicker.classList.add("hidden");
       closeOnlinePanel();
     }
+  });
+
+  // 撤回确认弹窗
+  dom.btnConfirmOk.addEventListener("click", () => {
+    dom.confirmModal.classList.add("hidden");
+    if (_confirmCallback) {
+      const cb = _confirmCallback;
+      _confirmCallback = null;
+      cb();
+    }
+  });
+  dom.btnConfirmCancel.addEventListener("click", closeConfirmModal);
+  dom.confirmModal.addEventListener("click", (e) => {
+    if (e.target === dom.confirmModal) closeConfirmModal();
   });
 
   // 设置
