@@ -1339,7 +1339,23 @@ svg {
   margin-top: 20px;
 }
 
-/* 设置弹窗开关（上下线提醒 / 提示音效） */
+/* 设置弹窗通知分组 */
+.settings-group {
+  margin-bottom: 8px;
+}
+
+.settings-group-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: #9ca3af;
+  margin-bottom: 10px;
+}
+
+.settings-group .field:last-child {
+  margin-bottom: 0;
+}
+
+/* 设置弹窗开关 */
 .field label.setting-switch {
   display: flex;
   align-items: center;

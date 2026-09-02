@@ -1132,7 +1132,7 @@ async function saveSettings() {
     localStorage.setItem(TZ_KEY, dom.timezoneSelect.value);
     refreshMessageTimes();
 
-    // 保存上下线提醒 / 提示音效设置
+    // 保存通知提醒设置（上下线：消息提示 / 音效；新消息：音效）
     localStorage.setItem(NOTICE_KEY, dom.settingNotice.checked ? "1" : "0");
     localStorage.setItem(SOUND_KEY, dom.settingSound.checked ? "1" : "0");
     localStorage.setItem(MSG_SOUND_KEY, dom.settingMsgSound.checked ? "1" : "0");
