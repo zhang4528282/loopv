@@ -582,15 +582,16 @@ svg {
   min-width: 0;
 }
 
-/* 连接状态点：嵌入刷新按钮内，绝对定位在按钮右下角 */
+/* 连接状态点：嵌入刷新按钮内，绝对定位在刷新图标正中心 */
 .btn-refresh {
   position: relative;
 }
 
 .conn-dot {
   position: absolute;
-  right: 3px;
-  bottom: 3px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   width: 8px;
   height: 8px;
   border-radius: 50%;
