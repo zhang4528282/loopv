@@ -228,3 +228,8 @@
 #### 修复
 - **邀请码框按后端设置动态显示**：新增公开接口 `GET /api/invite-settings`（无需登录，仅返回 `{ enabled }` 不泄露邀请码），chat 前端加载时查询——后端未开启验证时注册界面不显示邀请码输入框，开启时注册模式显示、登录模式隐藏；接口失败静默降级为隐藏
 - **移动端横向滚动条**：`.auth-view` 的 `overflow-y: auto` 会导致 `overflow-x` 被计算为 auto，内部 720px 装饰光斑 `.auth-glow` 在 375px 视口制造横向滚动；显式加 `overflow-x: hidden` 裁剪，认证卡片本身不溢出不受影响
+
+### 禁用用户手动缩放
+#### 新增
+- **viewport 禁止缩放**：chat 页面 viewport meta 增加 `maximum-scale=1.0, user-scalable=no`
+- **手势阻止兜底**：JS 阻止 `gesturestart`（iOS 捏合）、多指 `touchmove`、桌面双击缩放事件，彻底禁用用户手动缩放

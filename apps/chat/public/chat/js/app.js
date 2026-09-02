@@ -1350,6 +1350,22 @@ function init() {
   setMode("login");
   loadInviteSettings(); // 异步加载邀请码设置，不阻塞页面
   tryRestoreSession();
+  disableUserZoom(); // 禁用页面手动缩放（双指捏合/双击）
+}
+
+// 禁用用户手动缩放界面（配合 viewport user-scalable=no）
+function disableUserZoom() {
+  // iOS Safari：阻止捏合缩放手势
+  document.addEventListener("gesturestart", (e) => e.preventDefault());
+  document.addEventListener(
+    "touchmove",
+    (e) => {
+      if (e.touches.length > 1) e.preventDefault();
+    },
+    { passive: false }
+  );
+  // 阻止双击快速缩放（桌面浏览器双击触发）
+  document.addEventListener("dblclick", (e) => e.preventDefault());
 }
 
 init();
