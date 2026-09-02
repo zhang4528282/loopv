@@ -582,13 +582,23 @@ svg {
   min-width: 0;
 }
 
+/* 连接状态点：嵌入刷新按钮内，绝对定位在按钮右下角 */
+.btn-refresh {
+  position: relative;
+}
+
 .conn-dot {
-  flex-shrink: 0;
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: var(--warn);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
   transition: background 0.3s, box-shadow 0.3s;
+  pointer-events: none;
 }
 
 .conn-dot.online {
@@ -598,6 +608,23 @@ svg {
 
 .conn-dot.offline {
   background: var(--danger);
+}
+
+/* 刷新按钮加载态：图标旋转 */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.btn-refresh.spinning .refresh-icon {
+  animation: spin 0.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-refresh.spinning .refresh-icon {
+    animation: none;
+  }
 }
 
 .me-info {

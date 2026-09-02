@@ -559,8 +559,10 @@ function handleWsMessage(data) {
 function setConn(status) {
   dom.connDot.classList.toggle("online", status === "online");
   dom.connDot.classList.toggle("offline", status === "offline");
-  dom.connDot.title =
+  // 状态提示跟随刷新按钮（合并控件），title 同时反映连接状态与刷新功能
+  const stateText =
     status === "online" ? "已连接" : status === "offline" ? "连接断开" : "连接中…";
+  dom.btnRefresh.title = `${stateText} · 点击刷新消息`;
 }
 
 function scheduleReconnect() {
@@ -1130,13 +1132,18 @@ function bindEvents() {
     });
   });
 
-  // 手动刷新消息（兜底，带防抖）
+  // 手动刷新消息（兜底，带防抖 + 图标旋转反馈）
   dom.btnRefresh.addEventListener("click", async () => {
     // 防止快速重复点击
     dom.btnRefresh.disabled = true;
+    dom.btnRefresh.classList.add("spinning");
     await loadHistory();
     toast("消息已刷新", "success");
-    setTimeout(() => (dom.btnRefresh.disabled = false), 800);
+    // 旋转至少保持 600ms，让反馈清晰可见
+    setTimeout(() => {
+      dom.btnRefresh.disabled = false;
+      dom.btnRefresh.classList.remove("spinning");
+    }, 600);
   });
 
   // 发送
