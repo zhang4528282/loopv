@@ -69,9 +69,11 @@ const dom = {
   authUsername: $("#auth-username"),
   authNickname: $("#auth-nickname"),
   authPassword: $("#auth-password"),
+  authPasswordConfirm: $("#auth-password-confirm"),
   authError: $("#auth-error"),
   authSubmit: $("#auth-submit"),
   nicknameField: $("#nickname-field"),
+  passwordConfirmField: $("#password-confirm-field"),
   tabLogin: $("#tab-login"),
   tabRegister: $("#tab-register"),
 
@@ -269,9 +271,24 @@ function setMode(mode) {
   dom.tabLogin.classList.toggle("active", !isRegister);
   dom.tabRegister.classList.toggle("active", isRegister);
   dom.nicknameField.classList.toggle("hidden", !isRegister);
+  dom.passwordConfirmField.classList.toggle("hidden", !isRegister);
   dom.authSubmit.textContent = isRegister ? "注 册" : "登 录";
   dom.authError.textContent = "";
   dom.authPassword.setAttribute("autocomplete", isRegister ? "new-password" : "current-password");
+  // 切换模式时清空确认密码框，并重置密码可见性
+  dom.authPasswordConfirm.value = "";
+  resetPasswordVisibility();
+}
+
+// 重置密码框可见性（默认隐藏密码）
+function resetPasswordVisibility() {
+  document.querySelectorAll(".password-toggle").forEach((btn) => {
+    btn.classList.remove("show");
+    btn.setAttribute("aria-label", "显示密码");
+    btn.setAttribute("aria-pressed", "false");
+    const input = document.getElementById(btn.dataset.target);
+    if (input) input.type = "password";
+  });
 }
 
 function showAuth() {
@@ -318,6 +335,12 @@ async function handleAuthSubmit(e) {
   dom.authError.textContent = "";
   if (!username || !password) {
     dom.authError.textContent = "用户名和密码不能为空";
+    return;
+  }
+
+  // 注册模式：校验两次密码一致
+  if (state.mode === "register" && password !== dom.authPasswordConfirm.value) {
+    dom.authError.textContent = "两次输入的密码不一致";
     return;
   }
 
@@ -1006,6 +1029,20 @@ function bindEvents() {
   dom.tabRegister.addEventListener("click", () => setMode("register"));
   dom.authForm.addEventListener("submit", handleAuthSubmit);
   dom.btnLogout.addEventListener("click", handleLogout);
+
+  // 密码可见性切换
+  document.querySelectorAll(".password-toggle").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const input = document.getElementById(btn.dataset.target);
+      if (!input) return;
+      const show = input.type === "password";
+      input.type = show ? "text" : "password";
+      btn.classList.toggle("show", show);
+      btn.setAttribute("aria-label", show ? "隐藏密码" : "显示密码");
+      btn.setAttribute("aria-pressed", String(show));
+      input.focus();
+    });
+  });
 
   // 发送
   dom.btnSend.addEventListener("click", handleSend);

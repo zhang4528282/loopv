@@ -242,6 +242,67 @@ svg {
   box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
+/* 密码可见性切换 */
+.password-wrap {
+  position: relative;
+}
+
+.password-wrap input {
+  padding-right: 42px; /* 给右侧眼睛按钮留空间，避免文字重叠 */
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  color: #9ca3af;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s, transform 0.12s;
+}
+
+.password-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+.password-toggle:hover {
+  color: #2e5d4f;
+  background: rgba(46, 93, 79, 0.08);
+}
+
+.password-toggle:active {
+  transform: translateY(-50%) scale(0.92);
+}
+
+.password-toggle:focus-visible {
+  outline: 2px solid #2e5d4f;
+  outline-offset: 1px;
+}
+
+.password-toggle.show {
+  color: #2e5d4f;
+}
+
+.password-toggle .eye-off {
+  display: none;
+}
+
+.password-toggle.show .eye-open {
+  display: none;
+}
+
+.password-toggle.show .eye-off {
+  display: block;
+}
+
 .auth-error {
   min-height: 20px;
   margin-bottom: 12px;
