@@ -146,13 +146,17 @@
 - **前端已渲染消息刷新**：消息行记录 `data-user-id`，新增 `refreshMessagesOfUser()` 局部更新该用户所有消息的昵称/头像；保存资料成功后立即刷新自己页面，DO 广播 `profile_updated` 事件让所有在线客户端同步更新
 - **存量数据回填**：修复上线前的历史消息快照仍为旧资料，手动执行 D1 SQL 将 `messages` 表快照对齐到 `users` 表当前值
 
-### 2026-09-01 (注册/登录表单增强)
+### 2026-09-02 (注册/登录表单增强)
 
 #### 新增
 - **密码二次确认**：注册模式下新增「确认密码」输入框（登录模式隐藏），提交时校验两次密码一致，不一致提示「两次输入的密码不一致」；切换登录/注册时自动清空确认密码框
 - **密码可见性切换**：登录/注册密码框和确认密码框右侧增加眼睛按钮，点击切换明文/密文，图标随状态睁眼/闭眼，带 aria-label/aria-pressed 无障碍支持
 
-### 2026-09-01 (在线状态下线同步修复)
+## 2026-09-02
+
+### 在线状态下线同步修复
 
 #### 修复
-- **下线状态不同步**：compat date < 2026-04-07 时 `web_socket_auto_reply_to_close` 默认未启用，`webSocketClose` 必须手动调用 `ws.close(code, reason)` 回复 Close 帧完成握手，否则连接停留在 CLOSING 状态、`getWebSockets()` 仍返回该 socket，在线列表无法移除离线用户。已补上关闭握手并广播最新在线列表
+- **下线状态不同步（根因修复）**：`webSocketClose` 触发时刚关闭的 socket 仍处于 CLOSING 状态，`ctx.getWebSockets()` 仍返回它（官方文档确认），`getOnlineUsers()` 会把它计入在线列表并广播出去，之后无事件再触发重算，陈旧列表在其他客户端永久残留。`ws.close()` 只修复了 socket 生命周期（连接不再卡在 CLOSING），未修复广播内容竞态
+- **修复方案**：`getOnlineUsers(exclude?)` / `broadcastOnlineUsers(exclude?)` 支持排除参数，`webSocketClose` 广播时传入正在关闭的 `ws` 排除自身，确保离线用户被立即移除；多标签页场景只排除关闭的连接，另一连接保持在线，不受影响
+- **补充**：compat date < 2026-04-07 时 `webSocketClose` 仍需手动 `ws.close(code, reason)` 完成关闭握手（`web_socket_auto_reply_to_close` 默认未启用）

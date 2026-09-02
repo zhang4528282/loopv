@@ -126,9 +126,11 @@ export class ChatRoom extends DurableObject {
   }
 
   // 获取当前在线用户（按 userId 去重，一个用户可多端连接）
-  private getOnlineUsers(): UserInfo[] {
+  // exclude: 正在关闭的 socket（webSocketClose 里广播时，该 socket 仍可能被 getWebSockets() 返回）
+  private getOnlineUsers(exclude?: WebSocket): UserInfo[] {
     const users = new Map<number, UserInfo>();
     for (const sock of this.ctx.getWebSockets()) {
+      if (sock === exclude) continue;
       try {
         const user = sock.deserializeAttachment() as UserInfo | undefined;
         if (user && !users.has(user.userId)) {
@@ -142,8 +144,8 @@ export class ChatRoom extends DurableObject {
   }
 
   // 广播在线用户列表
-  private broadcastOnlineUsers(): void {
-    const users = this.getOnlineUsers();
+  private broadcastOnlineUsers(exclude?: WebSocket): void {
+    const users = this.getOnlineUsers(exclude);
     this.broadcast({
       type: "online_users",
       count: users.length,
@@ -336,7 +338,8 @@ export class ChatRoom extends DurableObject {
       // 连接已关闭，忽略
     }
     // 连接断开后广播最新在线用户列表
-    this.broadcastOnlineUsers();
+    // 排除自身：CLOSING 状态下 getWebSockets() 仍可能返回该 socket，不排除会导致离线用户残留
+    this.broadcastOnlineUsers(ws);
   }
 
   async webSocketError(ws: WebSocket, error: Error): Promise<void> {
