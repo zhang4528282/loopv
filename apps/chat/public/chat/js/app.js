@@ -10,6 +10,7 @@ const USER_KEY = "loopv_chat_user";
 const TZ_KEY = "loopv_chat_timezone";
 const NOTICE_KEY = "loopv_chat_notice";
 const SOUND_KEY = "loopv_chat_sound";
+const MSG_SOUND_KEY = "loopv_chat_msg_sound";
 const MAX_HISTORY = 50;
 
 // 常用时区（中文名 + IANA 标识，UTC 偏移由 Intl 动态计算）
@@ -115,6 +116,7 @@ const dom = {
   timezoneSelect: $("#timezone-select"),
   settingNotice: $("#setting-notice"),
   settingSound: $("#setting-sound"),
+  settingMsgSound: $("#setting-msg-sound"),
   btnSaveSettings: $("#btn-save-settings"),
   settingsAvatarPreview: $("#settings-avatar-preview"),
   btnAvatarUpload: $("#btn-avatar-upload"),
@@ -172,6 +174,11 @@ function getNoticeEnabled() {
 // 读取用户设置：提示音效（默认关闭）
 function getSoundEnabled() {
   return localStorage.getItem(SOUND_KEY) === "1";
+}
+
+// 读取用户设置：新消息音效（默认关闭）
+function getMsgSoundEnabled() {
+  return localStorage.getItem(MSG_SOUND_KEY) === "1";
 }
 
 // 时间格式化：秒级时间戳 → "2026年08月07日 14:30"（按用户设置的时区）
@@ -518,6 +525,10 @@ function handleWsMessage(data) {
       dom.messagesEmpty.classList.add("hidden");
       appendMessage(data, true);
       scrollToBottom();
+      // 新消息音效：仅他人消息且开关开启时播放（自己的消息不响）
+      if (getMsgSoundEnabled() && Number(data.user_id) !== Number(state.user?.id)) {
+        playMessageSound();
+      }
       break;
 
     case "recall":
@@ -625,6 +636,37 @@ function playPresenceSound(kind) {
       const start = now + i * 0.14;
       gain.gain.setValueAtTime(0.0001, start);
       gain.gain.exponentialRampToValueAtTime(0.12, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.12);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.13);
+    }
+  } catch {
+    /* 音效播放失败静默忽略 */
+  }
+}
+
+// 用 Web Audio API 生成新消息提示音（清脆双音 880→1320Hz，复用同一个 AudioContext）
+function playMessageSound() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    // 与上下线音效共用 AudioContext（页面有过用户交互后即可正常播放）
+    if (!_presenceAudioCtx) _presenceAudioCtx = new Ctx();
+    const ctx = _presenceAudioCtx;
+    if (ctx.state === "suspended") ctx.resume();
+
+    const notes = [880, 1320];
+    const now = ctx.currentTime;
+    for (let i = 0; i < notes.length; i++) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = notes[i];
+      const start = now + i * 0.1;
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.1, start + 0.015);
       gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.12);
       osc.connect(gain);
       gain.connect(ctx.destination);
@@ -1047,6 +1089,7 @@ function openSettings() {
   dom.timezoneSelect.value = getTimezone();
   dom.settingNotice.checked = getNoticeEnabled();
   dom.settingSound.checked = getSoundEnabled();
+  dom.settingMsgSound.checked = getMsgSoundEnabled();
   renderSettingsAvatar();
   dom.settingsModal.classList.remove("hidden");
 }
@@ -1092,6 +1135,7 @@ async function saveSettings() {
     // 保存上下线提醒 / 提示音效设置
     localStorage.setItem(NOTICE_KEY, dom.settingNotice.checked ? "1" : "0");
     localStorage.setItem(SOUND_KEY, dom.settingSound.checked ? "1" : "0");
+    localStorage.setItem(MSG_SOUND_KEY, dom.settingMsgSound.checked ? "1" : "0");
 
     localStorage.setItem(USER_KEY, JSON.stringify(state.user));
     renderMe();
