@@ -735,7 +735,7 @@ svg {
   max-width: 80%;
   align-items: flex-start;
   animation: msg-in 0.22s ease-out;
-  touch-action: manipulation; /* 允许滚动/缩放手势，长按不阻塞滚动 */
+  touch-action: manipulation; /* 移动端允许滚动/缩放手势，避免双击缩放延迟 */
 }
 
 .msg-row.own {
@@ -834,9 +834,16 @@ svg {
   font-size: 11px;
   color: #9ca3af;
   font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+/* 时间行：时间 + 撤回按钮横向排布 */
+.msg-time-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   padding: 0 4px;
   margin-top: 2px;
-  white-space: nowrap;
 }
 
 .msg-row.own .msg-time {
@@ -899,54 +906,27 @@ svg {
   color: #9ca3af;
 }
 
-/* 撤回按钮 —— 图标化，默认隐藏，长按消息行后显示 */
-.msg-actions {
-  display: flex;
-  gap: 6px;
-}
-
+/* 撤回按钮 —— 常显示在时间行内，小尺寸低调图标，hover 主色反馈 */
 .btn-delete {
-  display: none;
-  border: none;
-  background: transparent;
-  color: var(--text-dim);
-  padding: 4px;
-  border-radius: 6px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, color 0.15s;
+  border: none;
+  background: transparent;
+  color: #b6bcc6;
+  padding: 2px;
+  border-radius: 5px;
+  transition: color 0.15s, background 0.15s;
 }
 
 .btn-delete svg {
-  width: 16px;
-  height: 16px;
-}
-
-.btn-delete.show {
-  display: flex;
-  animation: recall-in 0.18s ease-out;
-}
-
-@keyframes recall-in {
-  from {
-    opacity: 0;
-    transform: scale(0.8);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+  width: 14px;
+  height: 14px;
 }
 
 .btn-delete:hover {
   background: rgba(0, 0, 0, 0.06);
-  color: var(--danger);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .btn-delete.show {
-    animation: none;
-  }
+  color: #2e5d4f;
 }
 
 /* 文件消息 */

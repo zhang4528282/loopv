@@ -761,28 +761,6 @@ function appendMessage(msg, animate) {
   nick.textContent = nickname;
   nick.title = nickname;
   meta.appendChild(nick);
-  if (isOwn) {
-    const actions = document.createElement("div");
-    actions.className = "msg-actions";
-    if (!isRecalled) {
-      // 撤回图标按钮：默认隐藏，长按消息行后显示
-      const delBtn = document.createElement("button");
-      delBtn.className = "btn-delete";
-      delBtn.type = "button";
-      delBtn.title = "撤回此消息";
-      delBtn.setAttribute("aria-label", "撤回此消息");
-      delBtn.innerHTML =
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
-      delBtn.onclick = (e) => {
-        e.stopPropagation();
-        confirmRecall(msg.id);
-      };
-      actions.appendChild(delBtn);
-      // 长按自己未撤回的消息显示撤回按钮
-      bindLongPressReveal(row, delBtn);
-    }
-    meta.appendChild(actions);
-  }
   body.appendChild(meta);
 
   const bubble = document.createElement("div");
@@ -796,11 +774,33 @@ function appendMessage(msg, animate) {
   }
   body.appendChild(bubble);
 
+  // 时间行：时间文本 + 撤回按钮（仅自己发的、未撤回的消息，常显示）
+  const timeRow = document.createElement("div");
+  timeRow.className = "msg-time-row";
+
   const time = document.createElement("span");
   time.className = "msg-time";
   time.dataset.ts = msg.created_at;
   time.textContent = formatTime(msg.created_at);
-  body.appendChild(time);
+  timeRow.appendChild(time);
+
+  if (isOwn && !isRecalled) {
+    const delBtn = document.createElement("button");
+    delBtn.className = "btn-delete";
+    delBtn.type = "button";
+    delBtn.title = "撤回此消息";
+    delBtn.setAttribute("aria-label", "撤回此消息");
+    // 撤回箭头图标（返回/回车风格），非垃圾桶
+    delBtn.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>';
+    delBtn.onclick = (e) => {
+      e.stopPropagation();
+      confirmRecall(msg.id);
+    };
+    timeRow.appendChild(delBtn);
+  }
+
+  body.appendChild(timeRow);
 
   row.appendChild(body);
   dom.messages.appendChild(row);
@@ -915,8 +915,9 @@ function markRecalled(id, by) {
     bubble.className = "msg-bubble deleted";
     bubble.textContent = by === "admin" ? "已被管理员撤回" : "消息已撤回";
   }
-  const actions = row.querySelector(".msg-actions");
-  if (actions) actions.remove();
+  // 撤回后移除时间行上的撤回按钮
+  const delBtn = row.querySelector(".btn-delete");
+  if (delBtn) delBtn.remove();
 }
 
 function removeMessages(ids) {
@@ -1031,44 +1032,6 @@ async function sendPendingFile() {
 
 // ========== 撤回 ==========
 let _confirmCallback = null; // 撤回确认弹窗的待执行回调
-
-// 长按自己的消息行（约 550ms）显示撤回按钮
-function bindLongPressReveal(row, btn) {
-  const HOLD_MS = 550;
-  let timer = null;
-
-  const start = () => {
-    if (btn.classList.contains("show")) return; // 已显示则无需重新计时
-    clearTimeout(timer);
-    timer = setTimeout(() => showRecallButton(btn), HOLD_MS);
-  };
-
-  const cancel = () => {
-    clearTimeout(timer);
-    timer = null;
-  };
-
-  // 优先使用 Pointer Events（统一鼠标/触摸/笔），滚动时浏览器会触发 pointercancel 取消计时
-  if (window.PointerEvent) {
-    row.addEventListener("pointerdown", start);
-    row.addEventListener("pointerup", cancel);
-    row.addEventListener("pointercancel", cancel);
-    row.addEventListener("pointerleave", cancel);
-  } else {
-    // 兼容旧浏览器
-    row.addEventListener("touchstart", start, { passive: true });
-    row.addEventListener("touchend", cancel);
-    row.addEventListener("touchcancel", cancel);
-  }
-}
-
-// 显示撤回按钮（2 秒后无交互自动隐藏）
-function showRecallButton(btn) {
-  if (btn.classList.contains("show")) return;
-  btn.classList.add("show");
-  clearTimeout(btn._hideTimer);
-  btn._hideTimer = setTimeout(() => btn.classList.remove("show"), 2000);
-}
 
 // 打开撤回确认弹窗
 function confirmRecall(messageId) {
