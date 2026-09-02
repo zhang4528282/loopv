@@ -328,6 +328,13 @@ export class ChatRoom extends DurableObject {
     reason: string,
     wasClean: boolean
   ): Promise<void> {
+    // compat date < 2026-04-07 时必须手动回复 Close 帧完成握手，
+    // 否则连接停留在 CLOSING 状态，getWebSockets() 仍返回它，在线列表无法移除离线用户
+    try {
+      ws.close(code, reason);
+    } catch {
+      // 连接已关闭，忽略
+    }
     // 连接断开后广播最新在线用户列表
     this.broadcastOnlineUsers();
   }
