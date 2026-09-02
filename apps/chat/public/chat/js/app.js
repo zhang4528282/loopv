@@ -572,7 +572,11 @@ function showPresenceNotice(kind, user) {
   const name = user.nickname || "匿名";
   const tip = document.createElement("div");
   tip.className = "presence-tip" + (kind === "online" ? " online" : " offline");
-  tip.textContent = kind === "online" ? `${name} 上线了` : `${name} 下线了`;
+  // 状态点 + 文本（用文本节点，避免 innerHTML 拼接用户输入）
+  const dot = document.createElement("span");
+  dot.className = "presence-dot";
+  tip.appendChild(dot);
+  tip.appendChild(document.createTextNode(kind === "online" ? `${name} 上线了` : `${name} 下线了`));
   dom.presenceNotices.appendChild(tip);
 
   // 3.5 秒后淡出移除

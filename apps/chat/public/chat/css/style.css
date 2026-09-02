@@ -1063,8 +1063,10 @@ svg {
 .presence-tip {
   padding: 6px 16px;
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.62);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(229, 231, 235, 0.7);
   box-shadow: var(--shadow);
   color: #2e5d4f;
   font-size: 12px;
@@ -1074,6 +1076,25 @@ svg {
   overflow: hidden;
   text-overflow: ellipsis;
   animation: tip-in 0.25s ease-out;
+}
+
+/* 状态点：上线绿色、下线灰色；白描边保证毛玻璃上清晰可见 */
+.presence-tip .presence-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
+  border-radius: 50%;
+  vertical-align: middle;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7);
+}
+
+.presence-tip.online .presence-dot {
+  background: #22c55e;
+}
+
+.presence-tip.offline .presence-dot {
+  background: #9ca3af;
 }
 
 .presence-tip.out {

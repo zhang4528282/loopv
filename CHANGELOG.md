@@ -170,3 +170,8 @@
 ### 保存设置触发假上下线提醒修复
 #### 修复
 - **保存设置后其他用户看到多余的「下线了→上线了」提醒**：`saveSettings()` 保存后无条件调用 `reconnectForProfile()` 重连 WS，触发 `webSocketClose` 广播 `user_offline`、重连后 `handleAuth` 又广播 `user_online`。已移除该重连调用（及其函数）——重连初衷是刷新 DO 缓存，现已被 `/profile-update` 内部通知 + 前端 `refreshMessagesOfUser` 完全覆盖，无需重连
+
+### 上下线提示条视觉优化
+#### 优化
+- **毛玻璃效果**：提示条背景改为半透明 + `backdrop-filter: blur(10px)`（含 `-webkit-` 前缀），质感更柔和，`prefers-reduced-motion` 不受影响
+- **状态点**：提示条文本前新增圆形状态点——上线绿色（#22c55e）、下线灰色（#9ca3af），带白描边保证毛玻璃上清晰可见；JS 用文本节点生成昵称文本（避免 innerHTML 拼接用户输入）
