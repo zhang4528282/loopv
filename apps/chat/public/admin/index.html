@@ -100,6 +100,28 @@
         </div>
       </section>
 
+      <!-- ===================== 邀请码设置 ===================== -->
+      <section class="panel settings-panel">
+        <div class="panel-toolbar">
+          <h2 class="panel-title">邀请码设置</h2>
+        </div>
+        <div class="settings-body">
+          <p class="settings-desc">开启后，新用户注册必须填写正确的邀请码才能注册成功</p>
+          <label class="switch-row">
+            <span class="switch-label">开启邀请码验证</span>
+            <span class="switch">
+              <input type="checkbox" id="invite-enabled" />
+              <span class="slider" aria-hidden="true"></span>
+            </span>
+          </label>
+          <div class="invite-code-row">
+            <label for="invite-code-input">邀请码</label>
+            <input type="text" id="invite-code-input" maxlength="64" placeholder="输入邀请码" autocomplete="off" />
+          </div>
+          <button class="btn-primary" id="btn-save-invite" type="button">保存设置</button>
+        </div>
+      </section>
+
       <!-- 标签页 -->
       <div class="tabs" role="tablist">
         <button class="tab active" data-tab="users" type="button">用户管理</button>

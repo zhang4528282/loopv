@@ -106,6 +106,18 @@
           </div>
         </div>
 
+        <div class="field hidden" id="invite-code-field">
+          <label for="auth-invite-code">邀请码 <span class="optional">如有</span></label>
+          <input
+            id="auth-invite-code"
+            type="text"
+            name="invite_code"
+            placeholder="请输入邀请码"
+            maxlength="64"
+            autocomplete="off"
+          />
+        </div>
+
         <div class="auth-error" id="auth-error" role="alert"></div>
 
         <button class="btn-primary btn-block" id="auth-submit" type="submit">登 录</button>

@@ -130,6 +130,11 @@ const dom = {
   btnBatchDelete: $("#btn-batch-delete"),
   batchCount: $("#batch-count"),
 
+  // 邀请码设置
+  inviteEnabled: $("#invite-enabled"),
+  inviteCodeInput: $("#invite-code-input"),
+  btnSaveInvite: $("#btn-save-invite"),
+
   // 确认弹窗
   confirmModal: $("#confirm-modal"),
   confirmTitle: $("#confirm-title"),
@@ -391,6 +396,7 @@ function enterAdmin() {
   showAdmin();
   switchTab(state.activeTab);
   loadStats();
+  loadInviteSettings();
 }
 
 // ========== 数据加载 ==========
@@ -403,6 +409,33 @@ async function loadStats() {
     dom.statDeleted.textContent = data.deleted ?? 0;
   } catch (err) {
     handleError(err);
+  }
+}
+
+async function loadInviteSettings() {
+  try {
+    const data = await api("/api/admin/invite-settings");
+    dom.inviteEnabled.checked = !!data.enabled;
+    dom.inviteCodeInput.value = data.code || "";
+  } catch (err) {
+    handleError(err);
+  }
+}
+
+async function saveInviteSettings() {
+  const enabled = dom.inviteEnabled.checked;
+  const code = dom.inviteCodeInput.value.trim();
+  dom.btnSaveInvite.disabled = true;
+  try {
+    await api("/api/admin/invite-settings", {
+      method: "PUT",
+      body: { enabled, code },
+    });
+    toast("已保存", "success");
+  } catch (err) {
+    handleError(err);
+  } finally {
+    dom.btnSaveInvite.disabled = false;
   }
 }
 
@@ -1042,6 +1075,10 @@ function bindEvents() {
     }
     syncCheckboxState();
   });
+
+  // 邀请码设置
+  dom.btnSaveInvite.addEventListener("click", saveInviteSettings);
+  dom.inviteCodeInput.addEventListener("keydown", (e) => e.key === "Enter" && saveInviteSettings());
 
   // 创建用户弹窗
   dom.btnCreateUser.addEventListener("click", openCreateModal);

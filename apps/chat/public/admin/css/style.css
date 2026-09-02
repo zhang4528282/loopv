@@ -507,6 +507,135 @@ svg {
   border-bottom: 1px solid var(--border);
 }
 
+/* ============================================================
+   邀请码设置
+   ============================================================ */
+.panel-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.settings-panel {
+  margin-bottom: 16px;
+}
+
+.settings-body {
+  padding: 18px 20px;
+}
+
+.settings-desc {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+
+/* 开关行 */
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  cursor: pointer;
+}
+
+.switch-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 42px;
+  height: 24px;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch .slider {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.switch .slider::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  transform: translateY(-50%);
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s;
+}
+
+.switch input:checked + .slider {
+  background: var(--grad);
+  border-color: transparent;
+}
+
+.switch input:checked + .slider::before {
+  transform: translateY(-50%) translateX(18px);
+}
+
+.switch input:focus-visible + .slider {
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+/* 邀请码输入行 */
+.invite-code-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0 20px;
+}
+
+.invite-code-row label {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.invite-code-row input {
+  flex: 1;
+  max-width: 320px;
+  padding: 10px 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.invite-code-row input::placeholder {
+  color: #9ca3af;
+}
+
+.invite-code-row input:focus {
+  border-color: var(--accent);
+  background: #fff;
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
 .batch-count {
   font-size: 13px;
   color: var(--text-dim);
@@ -1155,6 +1284,18 @@ input[type="checkbox"] {
   }
   .filter-bar {
     gap: 10px;
+  }
+  .settings-body {
+    padding: 14px 16px;
+  }
+  .invite-code-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .invite-code-row input {
+    max-width: none;
+    width: 100%;
   }
   .filter-item {
     flex: 1 1 100%;

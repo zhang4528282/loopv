@@ -203,6 +203,26 @@ app.post("/api/auth/register", async (c) => {
     return c.json({ error: "昵称长度不能超过 20 个字符" }, 400);
   }
 
+  // 邀请码验证（若已开启）
+  const inviteSetting = await c.env.DB.prepare(
+    `SELECT value FROM settings WHERE key = ?1`
+  )
+    .bind("invite_code_enabled")
+    .first();
+  const inviteEnabled = (inviteSetting?.value as string) === "1";
+  if (inviteEnabled) {
+    const codeRow = await c.env.DB.prepare(
+      `SELECT value FROM settings WHERE key = ?1`
+    )
+      .bind("invite_code")
+      .first();
+    const validCode = (codeRow?.value as string) || "";
+    const submittedCode = (body.invite_code || "").trim();
+    if (!submittedCode || submittedCode !== validCode) {
+      return c.json({ error: "邀请码不正确" }, 400);
+    }
+  }
+
   // 检查用户名是否已存在
   const existing = await c.env.DB.prepare(
     `SELECT id FROM users WHERE username = ?1`
@@ -550,6 +570,45 @@ app.get("/api/admin/stats", adminMiddleware, async (c) => {
     recalled: recalledCount?.cnt || 0,
     deleted: deletedCount?.cnt || 0,
   });
+});
+
+// 获取邀请码设置
+app.get("/api/admin/invite-settings", adminMiddleware, async (c) => {
+  const [enabledRow, codeRow] = await Promise.all([
+    c.env.DB.prepare(`SELECT value FROM settings WHERE key = ?1`).bind("invite_code_enabled").first(),
+    c.env.DB.prepare(`SELECT value FROM settings WHERE key = ?1`).bind("invite_code").first(),
+  ]);
+  return c.json({
+    enabled: (enabledRow?.value as string) === "1",
+    code: (codeRow?.value as string) || "",
+  });
+});
+
+// 更新邀请码设置
+app.put("/api/admin/invite-settings", adminMiddleware, async (c) => {
+  const body = await c.req.json();
+  const enabled = body.enabled ? "1" : "0";
+  let code = (body.code || "").trim();
+  if (code.length > 64) {
+    return c.json({ error: "邀请码不能超过 64 个字符" }, 400);
+  }
+  // 开启时必须提供邀请码
+  if (body.enabled && !code) {
+    return c.json({ error: "开启邀请码验证时必须设置邀请码" }, 400);
+  }
+  await c.env.DB.prepare(
+    `INSERT INTO settings (key, value) VALUES (?1, ?2)
+     ON CONFLICT(key) DO UPDATE SET value = ?2`
+  )
+    .bind("invite_code_enabled", enabled)
+    .run();
+  await c.env.DB.prepare(
+    `INSERT INTO settings (key, value) VALUES (?1, ?2)
+     ON CONFLICT(key) DO UPDATE SET value = ?2`
+  )
+    .bind("invite_code", code)
+    .run();
+  return c.json({ success: true, enabled: body.enabled, code });
 });
 
 // 用户列表（支持筛选：username/nickname/role/status）

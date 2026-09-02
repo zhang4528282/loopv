@@ -216,3 +216,10 @@
 - **标题居中**：chat 撤回确认弹窗与 admin 管理平台确认弹窗的标题均水平居中（仅作用于确认弹窗，不影响设置弹窗/创建用户弹窗的 space-between 布局）
 - **文案精简**：admin 端 6 处确认文案（封禁/解封/删除用户/撤回/删除/批量删除）去除冗余说明句，保留变量，简洁明了
 - **按钮统一**：取消 + 确认（chat 端撤回弹窗此前已符合，无改动）
+
+### 注册邀请码功能
+#### 新增
+- **邀请码验证**：后端注册接口增加邀请码校验（`settings` 表存储 `invite_code_enabled` / `invite_code`，开启验证后注册必须提交正确邀请码，错误返回 400「邀请码不正确」）
+- **注册表单邀请码输入框**：chat 注册模式下新增「邀请码（如有）」输入框，切换登录/注册时自动清空
+- **管理平台邀请码设置区块**：admin 统计看板下方新增「邀请码设置」面板——开关（是否开启验证，自定义渐变 switch 控件）+ 邀请码输入框（maxlength 64）+ 保存按钮；进入管理页自动加载当前设置，保存提交 `PUT /api/admin/invite-settings`，成功 toast「已保存」，后端 400（如「开启邀请码验证时必须设置邀请码」「邀请码不能超过 64 个字符」）经 `handleError` toast 展示
+- **数据库迁移**：`migrations/002_invite_settings.sql` 新增 `settings` 表（key/value）并预置默认值，需手动执行 `wrangler d1 execute loopv-chat-db --file=./migrations/002_invite_settings.sql`

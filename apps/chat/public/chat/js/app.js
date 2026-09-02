@@ -74,10 +74,12 @@ const dom = {
   authNickname: $("#auth-nickname"),
   authPassword: $("#auth-password"),
   authPasswordConfirm: $("#auth-password-confirm"),
+  authInviteCode: $("#auth-invite-code"),
   authError: $("#auth-error"),
   authSubmit: $("#auth-submit"),
   nicknameField: $("#nickname-field"),
   passwordConfirmField: $("#password-confirm-field"),
+  inviteCodeField: $("#invite-code-field"),
   tabLogin: $("#tab-login"),
   tabRegister: $("#tab-register"),
 
@@ -299,11 +301,13 @@ function setMode(mode) {
   dom.tabRegister.classList.toggle("active", isRegister);
   dom.nicknameField.classList.toggle("hidden", !isRegister);
   dom.passwordConfirmField.classList.toggle("hidden", !isRegister);
+  dom.inviteCodeField.classList.toggle("hidden", !isRegister);
   dom.authSubmit.textContent = isRegister ? "注 册" : "登 录";
   dom.authError.textContent = "";
   dom.authPassword.setAttribute("autocomplete", isRegister ? "new-password" : "current-password");
-  // 切换模式时清空确认密码框，并重置密码可见性
+  // 切换模式时清空确认密码框和邀请码框，并重置密码可见性
   dom.authPasswordConfirm.value = "";
+  dom.authInviteCode.value = "";
   resetPasswordVisibility();
 }
 
@@ -375,7 +379,7 @@ async function handleAuthSubmit(e) {
   try {
     const endpoint = state.mode === "register" ? "/api/auth/register" : "/api/auth/login";
     const body = state.mode === "register"
-      ? { username, password, nickname: nickname || username }
+      ? { username, password, nickname: nickname || username, invite_code: dom.authInviteCode.value.trim() }
       : { username, password };
 
     const data = await api(endpoint, { method: "POST", body });
