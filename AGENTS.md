@@ -1,5 +1,11 @@
 # AGENTS.md
 
+## 工作流约定（重要）
+
+- **每次代码修改完成后，无需用户授权，自动执行：`pnpm --filter @loopv/chat build` 验证 → 更新 CHANGELOG.md（开发日志，按北京时间记录）→ git commit → git push → `cd apps/chat && npx wrangler deploy` → 验证部署（curl 线上地址）**
+- 提交信息用 conventional commits 风格（feat/fix/chore/docs + 英文简述）
+- 部署前先 `pnpm --filter @loopv/chat build` 确认编译通过
+
 ## 项目命令
 
 ```bash

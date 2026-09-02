@@ -166,3 +166,7 @@
 - **提示音效**：Web Audio API 生成短音（无需音频文件），上线升调（660→880Hz）、下线降调（880→660Hz），带防爆音包络、复用单个 AudioContext
 - **设置开关**：设置弹窗新增「上下线提醒」「提示音效」两个 switch 开关，**默认关闭**，持久化到 localStorage
 - **后端事件广播**：`handleAuth` 仅当用户首次上线（无其他在线连接）广播 `user_online`，`webSocketClose` 仅当用户完全下线（排除自身后无剩余连接）广播 `user_offline`，多标签页不重复广播
+
+### 保存设置触发假上下线提醒修复
+#### 修复
+- **保存设置后其他用户看到多余的「下线了→上线了」提醒**：`saveSettings()` 保存后无条件调用 `reconnectForProfile()` 重连 WS，触发 `webSocketClose` 广播 `user_offline`、重连后 `handleAuth` 又广播 `user_online`。已移除该重连调用（及其函数）——重连初衷是刷新 DO 缓存，现已被 `/profile-update` 内部通知 + 前端 `refreshMessagesOfUser` 完全覆盖，无需重连

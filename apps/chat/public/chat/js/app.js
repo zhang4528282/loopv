@@ -1085,26 +1085,14 @@ async function saveSettings() {
     dom.settingsModal.classList.add("hidden");
     dom.avatarInput.value = "";
     toast("设置已保存", "success");
-
-    // 重连 WS，让 Durable Object 刷新缓存的最新用户信息
-    reconnectForProfile();
+    // 注意：不重连 WS。修改昵称/头像已通过 /profile-update 通知 DO 刷新在线连接缓存，
+    // 保存设置若触发重连会导致 webSocketClose 广播 user_offline、重连后又广播 user_online，
+    // 其他用户会看到多余的「下线了→上线了」提醒
   } catch (err) {
     toast(err.message || "保存失败", "error");
   } finally {
     dom.btnSaveSettings.disabled = false;
   }
-}
-
-function reconnectForProfile() {
-  if (state.ws) {
-    try {
-      state.ws.close();
-    } catch {
-      /* 忽略 */
-    }
-  }
-  state.reconnectDelay = 500;
-  connectWs();
 }
 
 // ========== 事件绑定 ==========
