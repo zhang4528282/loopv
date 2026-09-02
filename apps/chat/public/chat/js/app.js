@@ -59,6 +59,7 @@ const state = {
   mode: "login", // login | register
   onlineUsers: [], // 在线用户列表
   onlineCount: 0,
+  hasConnectedOnce: false, // 是否经历过重连（重连成功需自动补齐历史）
 };
 
 // ========== DOM 引用 ==========
@@ -121,6 +122,7 @@ const dom = {
 
   // 其他
   btnLogout: $("#btn-logout"),
+  btnRefresh: $("#btn-refresh"),
   toast: $("#toast"),
 
   // 在线成员
@@ -414,6 +416,7 @@ async function tryRestoreSession() {
 
 function enterChat() {
   showChat();
+  state.hasConnectedOnce = false; // 首次进入，重连标记复位（避免重复加载）
   loadHistory();
   connectWs();
 }
@@ -496,6 +499,10 @@ function handleWsMessage(data) {
         localStorage.setItem(USER_KEY, JSON.stringify(fresh));
         renderMe();
       }
+      // 重连成功后自动补齐断线期间错过的历史消息（首次进入不重复加载）
+      if (state.hasConnectedOnce) {
+        loadHistory();
+      }
       break;
 
     case "auth_error":
@@ -558,6 +565,8 @@ function setConn(status) {
 
 function scheduleReconnect() {
   clearTimeout(state.reconnectTimer);
+  // 进入重连流程：本次连接成功后需自动补齐断线期间的消息
+  state.hasConnectedOnce = true;
   state.reconnectTimer = setTimeout(() => {
     if (state.token) connectWs();
   }, state.reconnectDelay);
@@ -1119,6 +1128,15 @@ function bindEvents() {
       btn.setAttribute("aria-pressed", String(show));
       input.focus();
     });
+  });
+
+  // 手动刷新消息（兜底，带防抖）
+  dom.btnRefresh.addEventListener("click", async () => {
+    // 防止快速重复点击
+    dom.btnRefresh.disabled = true;
+    await loadHistory();
+    toast("消息已刷新", "success");
+    setTimeout(() => (dom.btnRefresh.disabled = false), 800);
   });
 
   // 发送
