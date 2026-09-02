@@ -23,7 +23,8 @@ apps/
 └── chat/            # chat.loopv.net + admin.loopv.net
     ├── src/
     │   ├── worker.ts       # Worker 入口 + Hono 路由
-    │   ├── chat-room.ts    # Durable Object (WebSocket 广播)
+    │   ├── chat-room.ts    # Durable Object (WebSocket 广播 + 认证)
+    │   ├── rate-limiter.ts # Durable Object (按 IP 登录/注册限流)
     │   └── auth.ts         # 密码哈希 + session 工具
     ├── public/
     │   ├── chat/           # 聊天室前端
@@ -48,12 +49,16 @@ apps/
 
 ## 功能特性
 
-- **认证系统**：用户名 + 密码 + 昵称注册登录（无邮箱/手机验证），PBKDF2 密码哈希 + session
+- **认证系统**：用户名 + 密码 + 昵称注册登录（无邮箱/手机验证），PBKDF2 密码哈希 + session；注册密码二次确认 + 明文/密文切换
 - **用户资料**：自主修改昵称、上传头像（可选）
-- **消息撤回**：不限时撤回自己的消息，管理员可撤回任意消息
-- **在线用户列表**：实时显示在线成员
+- **消息撤回**：不限时撤回自己的消息（长按/常显撤回箭头 + 二次确认），管理员可撤回任意消息
+- **在线用户列表**：实时显示在线成员，上下线即时同步
+- **上下线通知**：用户上下线小提示（毛玻璃胶囊 + 状态点）+ 提示音效，可在设置中开关（默认关闭）
+- **新消息音效**：他人发消息时的清脆提示音，设置中开关（默认关闭）
+- **消息同步兜底**：WS 断线重连后自动补齐历史消息 + 顶栏手动刷新按钮（同时刷新在线成员）
 - **管理平台**：统计看板、用户管理（封禁/测试用户）、消息管理（撤回/删除/批量/筛选）
 - **时间显示**：默认北京时间（UTC+8），可切换 19 个常用时区
+- **安全加固**：上传 MIME/扩展名双重黑名单、按 IP 登录限流、WS 消息节流、CORS 白名单、admin 域名隔离
 
 > 📖 详细使用说明见 [chat 操作手册](docs/chat-manual.md)
 
@@ -82,7 +87,7 @@ pnpm --filter @loopv/chat dev
 
 1. 在 Cloudflare 控制台创建 D1 数据库 (`loopv-chat-db`) 和 R2 存储桶 (`loopv-chat-media`)
 2. 在 D1 Console 执行 `apps/chat/migrations/001_init.sql`
-3. 复制 `apps/chat/wrangler.toml.example` 为 `wrangler.toml`，填入 D1 database_id
+3. 将 D1 database_id 填入 `apps/chat/wrangler.toml`（DO/D1/R2 绑定已声明）
 4. 部署聊天室：`cd apps/chat && wrangler deploy`
 5. Pages 连接 GitHub 部署门户（构建命令 `pnpm --filter @loopv/portal build`，输出 `apps/portal/dist`）
 6. 绑定自定义域名
