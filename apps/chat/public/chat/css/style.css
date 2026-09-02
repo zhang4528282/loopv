@@ -93,6 +93,7 @@ svg {
   padding: 20px;
   background: var(--bg);
   overflow-y: auto;
+  overflow-x: hidden; /* 裁剪装饰光斑横向溢出，避免移动端出现横向滚动条 */
 }
 
 .auth-glow {

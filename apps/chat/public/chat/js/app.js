@@ -61,6 +61,7 @@ const state = {
   onlineUsers: [], // 在线用户列表
   onlineCount: 0,
   hasConnectedOnce: false, // 是否经历过重连（重连成功需自动补齐历史）
+  inviteEnabled: false, // 后端是否开启邀请码验证（决定注册界面是否显示邀请码框）
 };
 
 // ========== DOM 引用 ==========
@@ -301,7 +302,8 @@ function setMode(mode) {
   dom.tabRegister.classList.toggle("active", isRegister);
   dom.nicknameField.classList.toggle("hidden", !isRegister);
   dom.passwordConfirmField.classList.toggle("hidden", !isRegister);
-  dom.inviteCodeField.classList.toggle("hidden", !isRegister);
+  // 邀请码框仅在注册模式且后端开启验证时显示
+  dom.inviteCodeField.classList.toggle("hidden", !(isRegister && state.inviteEnabled));
   dom.authSubmit.textContent = isRegister ? "注 册" : "登 录";
   dom.authError.textContent = "";
   dom.authPassword.setAttribute("autocomplete", isRegister ? "new-password" : "current-password");
@@ -326,6 +328,22 @@ function showAuth() {
   dom.chatView.classList.add("hidden");
   dom.authView.classList.remove("hidden");
   setMode(state.mode);
+}
+
+// 加载后端邀请码设置（决定注册界面是否显示邀请码输入框）
+async function loadInviteSettings() {
+  let enabled = false;
+  try {
+    const data = await api("/api/invite-settings");
+    enabled = Boolean(data && data.enabled);
+  } catch {
+    /* 接口失败时默认不显示邀请码框，不阻塞页面 */
+  }
+  if (state.inviteEnabled !== enabled) {
+    state.inviteEnabled = enabled;
+    // 异步加载完成后刷新当前模式的字段显隐
+    setMode(state.mode);
+  }
 }
 
 function showChat() {
@@ -1330,6 +1348,7 @@ function init() {
   renderEmojiGrid();
   buildTimezoneOptions();
   setMode("login");
+  loadInviteSettings(); // 异步加载邀请码设置，不阻塞页面
   tryRestoreSession();
 }
 

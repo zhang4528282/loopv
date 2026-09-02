@@ -223,3 +223,8 @@
 - **注册表单邀请码输入框**：chat 注册模式下新增「邀请码（如有）」输入框，切换登录/注册时自动清空
 - **管理平台邀请码设置区块**：admin 统计看板下方新增「邀请码设置」面板——开关（是否开启验证，自定义渐变 switch 控件）+ 邀请码输入框（maxlength 64）+ 保存按钮；进入管理页自动加载当前设置，保存提交 `PUT /api/admin/invite-settings`，成功 toast「已保存」，后端 400（如「开启邀请码验证时必须设置邀请码」「邀请码不能超过 64 个字符」）经 `handleError` toast 展示
 - **数据库迁移**：`migrations/002_invite_settings.sql` 新增 `settings` 表（key/value）并预置默认值，需手动执行 `wrangler d1 execute loopv-chat-db --file=./migrations/002_invite_settings.sql`
+
+### 注册界面与移动端修复
+#### 修复
+- **邀请码框按后端设置动态显示**：新增公开接口 `GET /api/invite-settings`（无需登录，仅返回 `{ enabled }` 不泄露邀请码），chat 前端加载时查询——后端未开启验证时注册界面不显示邀请码输入框，开启时注册模式显示、登录模式隐藏；接口失败静默降级为隐藏
+- **移动端横向滚动条**：`.auth-view` 的 `overflow-y: auto` 会导致 `overflow-x` 被计算为 auto，内部 720px 装饰光斑 `.auth-glow` 在 375px 视口制造横向滚动；显式加 `overflow-x: hidden` 裁剪，认证卡片本身不溢出不受影响

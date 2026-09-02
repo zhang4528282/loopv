@@ -178,6 +178,16 @@ app.get("/ws", async (c) => {
 
 // ===================== 认证 API =====================
 
+// 公开接口：查询是否开启邀请码验证（注册界面据此显示/隐藏邀请码输入框，无需登录）
+app.get("/api/invite-settings", async (c) => {
+  const row = await c.env.DB.prepare(
+    `SELECT value FROM settings WHERE key = ?1`
+  )
+    .bind("invite_code_enabled")
+    .first();
+  return c.json({ enabled: (row?.value as string) === "1" });
+});
+
 // 注册
 app.post("/api/auth/register", async (c) => {
   const limit = await rateLimit(c, "check");
