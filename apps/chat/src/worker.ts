@@ -771,10 +771,14 @@ app.delete("/api/admin/users/:id", adminMiddleware, async (c) => {
   return c.json({ success: true });
 });
 
-// 消息列表（支持筛选：status/sender/start/end）
+// 消息列表（支持筛选：statuses/status/sender/start/end；支持分页 page/limit）
 app.get("/api/admin/messages", adminMiddleware, async (c) => {
-  const limit = Math.min(parseInt(c.req.query("limit") || "100"), 500);
-  const status = c.req.query("status"); // 0=正常 1=用户撤回 2=管理员撤回 3=已删除
+  const rawLimit = parseInt(c.req.query("limit") || "100");
+  const limit = Math.min(Math.max(isNaN(rawLimit) ? 100 : rawLimit, 1), 500); // 页大小默认 100，上限 500
+  const rawPage = parseInt(c.req.query("page") || "1");
+  const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage; // 页码从 1 开始，非法/小于 1 按 1 处理
+  const status = c.req.query("status"); // 0=正常 1=用户撤回 2=管理员撤回 3=已删除（旧单值，兼容）
+  const statusesRaw = c.req.query("statuses"); // 逗号分隔多选，如 "0,1,2"
   const sender = c.req.query("sender");
   const start = parseInt(c.req.query("start") || "0");
   const end = parseInt(c.req.query("end") || "0");
@@ -782,9 +786,26 @@ app.get("/api/admin/messages", adminMiddleware, async (c) => {
   const conditions: string[] = [];
   const params: any[] = [];
 
-  if (status !== undefined && status !== "") {
-    conditions.push("deleted = ?");
-    params.push(parseInt(status));
+  // 状态筛选：statuses 优先（仅保留合法 0~3 且去重），未提供时回退单值 status
+  if (statusesRaw !== undefined && statusesRaw.trim() !== "") {
+    const validStatuses = [
+      ...new Set(
+        statusesRaw
+          .split(",")
+          .map((s) => parseInt(s.trim()))
+          .filter((n) => !isNaN(n) && n >= 0 && n <= 3)
+      ),
+    ];
+    if (validStatuses.length > 0) {
+      conditions.push(`deleted IN (${validStatuses.map(() => "?").join(",")})`);
+      params.push(...validStatuses);
+    }
+  } else if (status !== undefined && status !== "") {
+    const statusNum = parseInt(status);
+    if (!isNaN(statusNum)) {
+      conditions.push("deleted = ?");
+      params.push(statusNum);
+    }
   }
   if (sender) {
     conditions.push("nickname LIKE ?");
@@ -800,14 +821,25 @@ app.get("/api/admin/messages", adminMiddleware, async (c) => {
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-  params.push(limit);
 
+  // 总数（同一套筛选条件）
+  const countRow = await c.env.DB.prepare(
+    `SELECT COUNT(*) as cnt FROM messages ${where}`
+  )
+    .bind(...params)
+    .first();
+  const total = Number((countRow as any)?.cnt || 0);
+  const totalPages = total > 0 ? Math.ceil(total / limit) : 0;
+
+  // 当前页数据（OFFSET 参数绑定，不拼接）
+  const offset = (page - 1) * limit;
+  params.push(limit, offset);
   const { results } = await c.env.DB.prepare(
-    `SELECT id, user_id, nickname, type, content, media_url, deleted, created_at FROM messages ${where} ORDER BY id DESC LIMIT ?`
+    `SELECT id, user_id, nickname, type, content, media_url, deleted, created_at FROM messages ${where} ORDER BY id DESC LIMIT ? OFFSET ?`
   )
     .bind(...params)
     .all();
-  return c.json({ messages: results });
+  return c.json({ messages: results, total, page, limit, totalPages });
 });
 
 // 管理员删除消息（deleted=3，chat 界面不显示）

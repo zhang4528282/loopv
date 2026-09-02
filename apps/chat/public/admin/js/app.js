@@ -64,7 +64,14 @@ const msgFilter = {
   start: "",
   end: "",
   sender: "",
-  status: "",
+  statuses: [], // 状态多选白名单，空数组 = 全部状态
+  page: 1, // 当前页（从 1 开始），筛选条件变化时重置为 1
+};
+
+// 消息分页元信息（来自后端响应）
+const msgPagination = {
+  total: 0,
+  totalPages: 0,
 };
 
 const userFilter = {
@@ -121,9 +128,18 @@ const dom = {
   fStart: $("#f-start"),
   fEnd: $("#f-end"),
   fSender: $("#f-sender"),
-  fMsgStatus: $("#f-msg-status"),
+  msgStatusChips: $("#msg-status-chips"),
   btnMsgQuery: $("#btn-msg-query"),
   btnMsgReset: $("#btn-msg-reset"),
+
+  // 消息分页
+  msgScroll: $("#msg-scroll"),
+  paginationTotal: $("#pagination-total"),
+  paginationNav: $("#pagination-nav"),
+  paginationInput: $("#pagination-input"),
+  paginationTotalPages: $("#pagination-total-pages"),
+  btnMsgPrev: $("#btn-msg-prev"),
+  btnMsgNext: $("#btn-msg-next"),
 
   // 批量删除
   checkAll: $("#check-all"),
@@ -452,7 +468,8 @@ function buildMsgQuery() {
   const params = new URLSearchParams();
   params.set("limit", MSG_LIMIT);
   if (msgFilter.sender.trim()) params.set("sender", msgFilter.sender.trim());
-  if (msgFilter.status !== "") params.set("status", msgFilter.status);
+  if (msgFilter.statuses.length) params.set("statuses", msgFilter.statuses.join(","));
+  if (msgFilter.page > 1) params.set("page", msgFilter.page);
   const start = datetimeToUnix(msgFilter.start);
   const end = datetimeToUnix(msgFilter.end);
   if (start > 0) params.set("start", start);
@@ -476,21 +493,90 @@ async function loadUsers() {
   }
 }
 
+// 解析分页响应；旧版无分页元数据的响应按单页兜底
+function parseMsgPage(data) {
+  const msgs = Array.isArray(data.messages) ? data.messages : [];
+  const hasMeta = data.total != null && data.totalPages != null;
+  if (hasMeta) {
+    return {
+      total: Number(data.total) || 0,
+      page: Number(data.page) || 1,
+      totalPages: Number(data.totalPages) || 0,
+    };
+  }
+  return { total: msgs.length, page: 1, totalPages: msgs.length > 0 ? 1 : 0 };
+}
+
 async function loadMessages() {
   dom.messagesLoading.classList.remove("hidden");
   dom.messagesEmpty.classList.add("hidden");
   dom.messagesBody.innerHTML = "";
   state.selectedMsgIds.clear();
   try {
-    const qs = buildMsgQuery();
-    const data = await api(`/api/admin/messages?${qs}`);
+    let data = await api(`/api/admin/messages?${buildMsgQuery()}`);
+    let meta = parseMsgPage(data);
+    // 末页删空等场景：请求页超出末页时收敛回退到 totalPages 页重新拉取（至多一次，防死循环）
+    if (meta.total > 0 && meta.totalPages > 0 && meta.page > meta.totalPages) {
+      msgFilter.page = meta.totalPages;
+      data = await api(`/api/admin/messages?${buildMsgQuery()}`);
+      meta = parseMsgPage(data);
+    }
+    // total = 0 时停在 page 1 空态
+    if (meta.total === 0) msgFilter.page = 1;
+
     state.messages = data.messages || [];
+    msgPagination.total = meta.total;
+    msgPagination.totalPages = meta.totalPages;
     renderMessages();
+    renderPagination();
     updateBatchUI();
+    // 翻页/重载后滚动容器即时回顶（非 smooth）
+    if (dom.msgScroll) dom.msgScroll.scrollTop = 0;
   } catch (err) {
     handleError(err);
   } finally {
     dom.messagesLoading.classList.add("hidden");
+  }
+}
+
+// ========== 消息分页 ==========
+function renderPagination() {
+  dom.paginationTotal.textContent = `共 ${msgPagination.total} 条`;
+  const showNav = msgPagination.totalPages > 1;
+  dom.paginationNav.classList.toggle("hidden", !showNav);
+  if (!showNav) return;
+  dom.btnMsgPrev.disabled = msgFilter.page <= 1;
+  dom.btnMsgNext.disabled = msgFilter.page >= msgPagination.totalPages;
+  dom.paginationInput.max = String(msgPagination.totalPages);
+  dom.paginationInput.value = String(msgFilter.page);
+  dom.paginationTotalPages.textContent = String(msgPagination.totalPages);
+}
+
+function goMsgPage(page) {
+  const totalPages = Math.max(1, msgPagination.totalPages);
+  const target = Math.max(1, Math.min(totalPages, Math.floor(page)));
+  if (Number.isNaN(target) || target === msgFilter.page) return;
+  msgFilter.page = target;
+  loadMessages();
+}
+
+function jumpMsgPage() {
+  const raw = dom.paginationInput.value.trim();
+  if (!raw) {
+    dom.paginationInput.value = String(msgFilter.page);
+    return;
+  }
+  const val = Math.floor(Number(raw));
+  if (!Number.isFinite(val)) {
+    dom.paginationInput.value = String(msgFilter.page);
+    return;
+  }
+  const totalPages = Math.max(1, msgPagination.totalPages);
+  const target = Math.max(1, Math.min(totalPages, val));
+  dom.paginationInput.value = String(target); // 越界收敛到 1..totalPages
+  if (target !== msgFilter.page) {
+    msgFilter.page = target;
+    loadMessages();
   }
 }
 
@@ -1014,11 +1100,28 @@ function resetUserFilter() {
   loadUsers();
 }
 
+// 读取当前勾选的状态 chip（值 0..3，全不勾 = 全部状态）
+function selectedMsgStatuses() {
+  const statuses = [];
+  dom.msgStatusChips.querySelectorAll(".chip-input:checked").forEach((cb) => {
+    const v = Number(cb.value);
+    if (!Number.isNaN(v)) statuses.push(v);
+  });
+  return statuses;
+}
+
+function clearMsgStatusChips() {
+  dom.msgStatusChips.querySelectorAll(".chip-input").forEach((cb) => {
+    cb.checked = false;
+  });
+}
+
 function applyMsgFilter() {
   msgFilter.start = dom.fStart.value;
   msgFilter.end = dom.fEnd.value;
   msgFilter.sender = dom.fSender.value;
-  msgFilter.status = dom.fMsgStatus.value;
+  msgFilter.statuses = selectedMsgStatuses();
+  msgFilter.page = 1; // 筛选条件变化 → 回到第 1 页
   loadMessages();
 }
 
@@ -1026,11 +1129,12 @@ function resetMsgFilter() {
   dom.fStart.value = "";
   dom.fEnd.value = "";
   dom.fSender.value = "";
-  dom.fMsgStatus.value = "";
+  clearMsgStatusChips();
   msgFilter.start = "";
   msgFilter.end = "";
   msgFilter.sender = "";
-  msgFilter.status = "";
+  msgFilter.statuses = [];
+  msgFilter.page = 1;
   loadMessages();
 }
 
@@ -1063,6 +1167,17 @@ function bindEvents() {
   dom.btnMsgQuery.addEventListener("click", applyMsgFilter);
   dom.btnMsgReset.addEventListener("click", resetMsgFilter);
   dom.fSender.addEventListener("keydown", (e) => e.key === "Enter" && applyMsgFilter());
+
+  // 消息分页
+  dom.btnMsgPrev.addEventListener("click", () => goMsgPage(msgFilter.page - 1));
+  dom.btnMsgNext.addEventListener("click", () => goMsgPage(msgFilter.page + 1));
+  dom.paginationInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      jumpMsgPage();
+    }
+  });
+  dom.paginationInput.addEventListener("blur", jumpMsgPage);
 
   // 批量删除 + 全选
   dom.btnBatchDelete.addEventListener("click", confirmBatchDelete);

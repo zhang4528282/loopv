@@ -212,14 +212,25 @@
             <input id="f-sender" type="text" placeholder="昵称模糊搜索" />
           </div>
           <div class="filter-item">
-            <label for="f-msg-status">消息状态</label>
-            <select id="f-msg-status">
-              <option value="">全部</option>
-              <option value="0">正常</option>
-              <option value="1">用户撤回</option>
-              <option value="2">管理员撤回</option>
-              <option value="3">已删除</option>
-            </select>
+            <label>消息状态<span class="filter-note">不勾选 = 全部</span></label>
+            <div class="chip-group" id="msg-status-chips" role="group" aria-label="消息状态多选筛选">
+              <label class="chip">
+                <input type="checkbox" class="chip-input" value="0" />
+                <span class="chip-face"><span class="chip-dot chip-dot-normal" aria-hidden="true"></span>正常</span>
+              </label>
+              <label class="chip">
+                <input type="checkbox" class="chip-input" value="1" />
+                <span class="chip-face"><span class="chip-dot chip-dot-user-recall" aria-hidden="true"></span>用户撤回</span>
+              </label>
+              <label class="chip">
+                <input type="checkbox" class="chip-input" value="2" />
+                <span class="chip-face"><span class="chip-dot chip-dot-admin-recall" aria-hidden="true"></span>管理员撤回</span>
+              </label>
+              <label class="chip">
+                <input type="checkbox" class="chip-input" value="3" />
+                <span class="chip-face"><span class="chip-dot chip-dot-deleted" aria-hidden="true"></span>已删除</span>
+              </label>
+            </div>
           </div>
           <div class="filter-actions">
             <button class="btn-secondary" id="btn-msg-reset" type="button">重置</button>
@@ -227,7 +238,7 @@
           </div>
         </div>
 
-        <div class="table-wrap">
+        <div class="table-wrap table-scroll" id="msg-scroll">
           <table>
             <thead>
               <tr>
@@ -246,6 +257,20 @@
         </div>
         <div class="empty hidden" id="messages-empty">暂无消息</div>
         <div class="loading" id="messages-loading"><span class="spinner"></span>加载中…</div>
+
+        <!-- 分页栏 -->
+        <div class="pagination" id="msg-pagination">
+          <span class="pagination-total" id="pagination-total">共 0 条</span>
+          <div class="pagination-nav hidden" id="pagination-nav">
+            <button class="btn-secondary btn-sm" id="btn-msg-prev" type="button" disabled>‹ 上一页</button>
+            <span class="pagination-page">
+              第
+              <input type="number" id="pagination-input" min="1" step="1" inputmode="numeric" aria-label="跳转页码" />
+              / <span id="pagination-total-pages">1</span> 页
+            </span>
+            <button class="btn-secondary btn-sm" id="btn-msg-next" type="button" disabled>下一页 ›</button>
+          </div>
+        </div>
       </section>
     </main>
   </div>
