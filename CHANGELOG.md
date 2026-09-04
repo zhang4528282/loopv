@@ -2,6 +2,25 @@
 
 ## 2026-09-04
 
+### 聊天室上下线状态同步修复（僵尸在线残留 + 提醒缺失/错乱）
+#### 问题
+- 用户非正常下线（杀进程/断网/切换网络/设备休眠）后，其他用户界面仍长期显示其「在线」，且无下线提醒
+- 上线/下线提醒经常缺失或错乱（刷新页面即广播一对假的「下线了→上线了」）
+#### 根因
+- **服务端无死连接检测**：`webSocketClose` 仅在平台网络栈实际观测到连接关闭时才触发，半开 TCP 连接（无 close 帧）可能长时间不被清理 → 僵尸连接持续计入在线列表、`user_offline` 永不广播
+- **心跳机制形同虚设**：`setWebSocketAutoResponse` 是「收到客户端 ping 才自动回 pong」的被动应答器，而前端从不发 ping；DO 休眠时 `setTimeout` 不执行也无法主动扫描
+- **close/auth 跨事件竞态**：断线重连时旧连接 close 与新连接 auth 交错，导致误判「完全下线」广播下线、随后又因 CLOSING 残留 socket 吞掉上线广播（只看到「下线了」）；普通刷新页面也会产生「下线了→上线了」噪音对
+#### 修复
+- **客户端心跳（30s 业务 ping）**：`app.js` 新增 30s 心跳，仅 OPEN 连接发送；`visibilitychange` 恢复可见 / bfcache `pageshow`（persisted）/ `online` 时立即心跳并自检——连接不在 OPEN 则主动重连（修复后台冻结后 WS 被浏览器静默关闭、他人仍看到在线）
+- **DO alarm 周期巡检收割僵尸连接**：`chat-room.ts` 新增 `alarm()`（休眠时也能唤醒，替代不可靠的 setTimeout）——连接 accept 即写入占位活跃时间，`webSocketMessage` 统一刷新 `lastSeen`；alarm 每 60s 巡检，超过 90s 无任何消息的连接（含从未认证的占位连接）主动 `close(4001)` 清出
+- **下线公告 10s 宽限 overlay**：连接断开不再立即广播下线，而是写入 storage 持久化的宽限 overlay（`closing_grace`）——宽限期内重新认证视为闪断/刷新页面，静默恢复不产生噪音；到期仍无才由 alarm 移出在线列表并广播 `user_offline`；`online_users` 列表在宽限期内保留该用户避免闪烁；「刷新页面假上下线」与「下线后不再上线」竞态一并消除
+- **compatibility_date 升级 2025-08-01 → 2026-04-07**：启用 `web_socket_auto_reply_to_close`（runtime 自动回复 Close 帧），删除 `webSocketClose` 中手动 `ws.close()` 补握手 hack
+- **认证判定适配占位 attachment**：`handleMessage`/`handleDelete` 改为校验 `userId` 存在（此前未认证连接无 attachment，现在有占位 `lastSeen`，避免绕过登录校验）
+- 参数常量集中在文件顶部（心跳 30s / 巡检 60s / 僵尸 90s / 宽限 10s），与前端 `HEARTBEAT_INTERVAL` 对齐
+#### 效果
+- 真实下线：他人最迟在断线后约 90–150s（僵尸收割）+ 10s（宽限）收到「下线了」提醒、列表同步移除（此前可能无限期残留）
+- 刷新页面 / 短暂网络抖动：不再产生虚假的上下线提醒
+
 ### 仓库公开前安全检查与 .dev.vars 忽略
 - **安全检查结论**：全库（HEAD + 历史 61 commits）扫描无凭据泄露——workflow 仅含 `${{ secrets.* }}` 占位符、源码无硬编码口令、无 `.env`/`.dev.vars`/私钥被跟踪；wrangler.toml 的 D1 `database_id` 非机密（历史已有先例处置）。可公开
 - **`.gitignore` 补充**：新增 `.dev.vars` / `.dev.vars.*` 忽略（wrangler 本地环境变量文件，防未来误提交进公开仓库）

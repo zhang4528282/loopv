@@ -66,6 +66,7 @@ const state = {
   hasOlder: false, // 是否还有更早历史
   loadingOlder: false, // 加载更多进行中锁
   olderDone: false, // 是否已提示过「没有更早的消息」（防重复 toast）
+  heartbeatTimer: null, // 心跳定时器（30s 一次，服务端据此清理僵尸连接）
 };
 
 // ========== DOM 引用 ==========
@@ -574,6 +575,7 @@ function connectWs() {
   if (!state.token) return;
 
   clearTimeout(state.reconnectTimer);
+  startHeartbeat();
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
   const wsUrl = `${protocol}//${location.host}/ws`;
 
@@ -584,6 +586,7 @@ function connectWs() {
   ws.onopen = () => {
     // 连接后立即发送认证
     ws.send(JSON.stringify({ type: "auth", token: state.token }));
+    sendHeartbeat();
   };
 
   ws.onmessage = (e) => {
@@ -726,6 +729,42 @@ function scheduleReconnect() {
     if (state.token) connectWs();
   }, state.reconnectDelay);
   state.reconnectDelay = Math.min(state.reconnectDelay * 2, 15000);
+}
+
+// ========== 心跳与断线自愈 ==========
+// 每 30s 向服务端发一次业务心跳。服务端据此刷新连接活跃时间，
+// 超过 90s 无任何消息的连接会被判定为僵尸并主动关闭（清出在线列表）——
+// 否则用户断网/杀进程后他人界面会一直显示其在线。
+const HEARTBEAT_INTERVAL = 30000;
+
+function startHeartbeat() {
+  clearInterval(state.heartbeatTimer);
+  state.heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
+}
+
+function sendHeartbeat() {
+  const ws = state.ws;
+  if (state.token && ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      ws.send(JSON.stringify({ type: "ping" }));
+    } catch {
+      /* 连接可能已坏，忽略，走 onclose 重连 */
+    }
+  }
+}
+
+// 页面重新可见 / bfcache 恢复 / 网络恢复时调用：立即心跳 + 自检连接
+// （后台冻结期间浏览器可能已静默关闭 WS 而未触发 onclose，恢复时需主动重连）
+function handleVisibilityResume() {
+  sendHeartbeat();
+  const ws = state.ws;
+  if (
+    state.token &&
+    !state.intentionalClose &&
+    (!ws || ws.readyState !== WebSocket.OPEN)
+  ) {
+    connectWs();
+  }
 }
 
 // ========== 上下线提示 ==========
@@ -1632,6 +1671,16 @@ function init() {
   loadInviteSettings(); // 异步加载邀请码设置，不阻塞页面
   tryRestoreSession();
   disableUserZoom(); // 禁用页面手动缩放（双指捏合/双击）
+
+  // 页面恢复可见 / bfcache 恢复 / 网络恢复：立即心跳并自检连接，
+  // 修复后台冻结后 WS 被浏览器静默关闭、他人仍看到该用户在线的问题
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") handleVisibilityResume();
+  });
+  window.addEventListener("pageshow", (e) => {
+    if (e.persisted) handleVisibilityResume();
+  });
+  window.addEventListener("online", handleVisibilityResume);
 }
 
 // 视口变化（键盘弹出/收起、缩放等）时同步容器高度

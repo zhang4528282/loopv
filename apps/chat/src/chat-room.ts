@@ -7,6 +7,30 @@ interface UserInfo {
   isAdmin: boolean;
 }
 
+// 每连接附件结构（Hibernation 安全：DO 休眠唤醒后仍可恢复，勿改回内存 Map）
+interface AttachmentUser {
+  lastSeen: number; // 最近一次收到该连接消息/心跳的时间（毫秒），供 alarm 巡检判断僵尸连接
+  userId?: number; // auth 成功后才有
+  nickname?: string;
+  avatarUrl?: string | null;
+  isAdmin?: boolean;
+}
+
+// 离线公告宽限 overlay 条目：连接断开后不立即广播下线，宽限期内重连视为闪断（静默）
+interface ClosingInfo {
+  userId: number;
+  nickname: string;
+  avatarUrl: string | null;
+  expiresAt: number; // 毫秒时间戳，到期仍无该用户重新认证则公告下线
+}
+
+// ===== 心跳 / 僵尸收割 / 下线公告宽限 参数 =====
+const HEARTBEAT_INTERVAL_MS = 30_000; // 客户端心跳周期（app.js 保持一致）
+const SWEEP_INTERVAL_MS = 60_000; // DO alarm 周期巡检间隔
+const IDLE_TIMEOUT_MS = 90_000; // 连接超过该时长无任何消息 → 判定僵尸主动 close
+const OFFLINE_GRACE_MS = 10_000; // 断开后公告下线的宽限期
+const CLOSING_KEY = "closing_grace"; // 宽限 overlay 的 storage key
+
 export class ChatRoom extends DurableObject {
   private env: Env;
   private lastSendAt = new Map<number, number>(); // userId -> 毫秒时间戳
@@ -14,14 +38,6 @@ export class ChatRoom extends DurableObject {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.env = env;
-
-    // Hibernation API 心跳
-    ctx.setWebSocketAutoResponse(
-      new WebSocketRequestResponsePair(
-        JSON.stringify({ type: "ping" }),
-        JSON.stringify({ type: "pong" })
-      )
-    );
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -45,7 +61,7 @@ export class ChatRoom extends DurableObject {
         // 更新该用户所有在线连接的 attachment
         for (const sock of this.ctx.getWebSockets()) {
           try {
-            const u = sock.deserializeAttachment() as UserInfo | undefined;
+            const u = sock.deserializeAttachment() as AttachmentUser | undefined;
             if (u && u.userId === userId) {
               sock.serializeAttachment({ ...u, nickname, avatarUrl });
             }
@@ -53,7 +69,7 @@ export class ChatRoom extends DurableObject {
             // 忽略无法读取状态的连接
           }
         }
-        this.broadcastOnlineUsers();
+        await this.broadcastOnlineUsers();
         // 广播资料更新事件，让所有在线客户端即时刷新该用户的历史消息显示
         this.broadcast({
           type: "profile_updated",
@@ -92,14 +108,36 @@ export class ChatRoom extends DurableObject {
 
     this.ctx.acceptWebSocket(server);
 
+    // 立即写入占位活跃时间：未认证/长期静默的连接也能被 alarm 巡检识别并收割
+    server.serializeAttachment({ lastSeen: Date.now() });
+    // 只要有连接就保证有一个巡检 alarm 武装着（DO 休眠时 alarm 也会唤醒）
+    await this.ensureSweepArmed();
+
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  // 确保存在周期巡检 alarm（用于僵尸连接收割与宽限期到期处理）
+  private async ensureSweepArmed(): Promise<void> {
+    const existing = await this.ctx.storage.getAlarm();
+    if (existing == null) {
+      await this.ctx.storage.setAlarm(Date.now() + SWEEP_INTERVAL_MS);
+    }
   }
 
   async webSocketMessage(ws: WebSocket, raw: string): Promise<void> {
     try {
+      // 每次收到消息都刷新该连接活跃时间（客户端心跳与此共用同一入口）
+      const att = ws.deserializeAttachment() as AttachmentUser | undefined;
+      if (att) {
+        ws.serializeAttachment({ ...att, lastSeen: Date.now() });
+      }
       const data = JSON.parse(raw);
 
       switch (data.type) {
+        case "ping": {
+          // 客户端心跳：活跃时间已在上方刷新，无需其它处理
+          break;
+        }
         case "auth": {
           await this.handleAuth(ws, data.token);
           break;
@@ -114,7 +152,7 @@ export class ChatRoom extends DurableObject {
         }
         case "refresh_online": {
           // 客户端手动刷新在线成员列表（兜底，网络/WS 异常后状态可能不同步）
-          this.broadcastOnlineUsers();
+          await this.broadcastOnlineUsers();
           break;
         }
       }
@@ -134,7 +172,13 @@ export class ChatRoom extends DurableObject {
       return;
     }
     // 关键：用 serializeAttachment 替代内存 Map，DO 休眠唤醒后仍能恢复
-    ws.serializeAttachment(user);
+    ws.serializeAttachment({
+      lastSeen: Date.now(),
+      userId: user.userId,
+      nickname: user.nickname,
+      avatarUrl: user.avatarUrl,
+      isAdmin: user.isAdmin,
+    });
     ws.send(
       JSON.stringify({
         type: "auth_ok",
@@ -145,11 +189,23 @@ export class ChatRoom extends DurableObject {
       })
     );
 
-    // 判断该用户是否为新上线（之前无任何在线连接）
-    const existed = this.getOnlineUsers(ws).some((u) => u.userId === user.userId);
-    this.broadcastOnlineUsers();
-    // 仅当用户第一次上线时广播上线事件（多标签页重复连接不重复广播）
-    if (!existed) {
+    // 若该用户在离线公告宽限期内（刚断又连 = 闪断/刷新页面）：从 overlay 移除，
+    // 视为从未离线——不广播 user_online，他人不会看到「下线了→上线了」噪音。
+    const grace = await this.getClosingMap();
+    const inGrace = grace[user.userId] != null;
+    if (inGrace) {
+      delete grace[user.userId];
+      await this.ctx.storage.put(CLOSING_KEY, JSON.stringify(grace));
+    }
+
+    // 排除自身后是否仍有该用户的其他在线连接（多标签页不重复广播上线）
+    const hasOtherConn = this.getOnlineUsers(ws).some(
+      (u) => u.userId === user.userId
+    );
+
+    await this.broadcastOnlineUsers();
+    // 仅当用户第一次上线（无其他连接）且不在宽限期时广播上线事件
+    if (!hasOtherConn && !inGrace) {
       this.broadcast({
         type: "user_online",
         user: {
@@ -161,16 +217,21 @@ export class ChatRoom extends DurableObject {
     }
   }
 
-  // 获取当前在线用户（按 userId 去重，一个用户可多端连接）
-  // exclude: 正在关闭的 socket（webSocketClose 里广播时，该 socket 仍可能被 getWebSockets() 返回）
+  // 获取当前真实在线用户（按 userId 去重，一个用户可多端连接）
+  // exclude: 正在关闭的 socket（webSocketClose 里判断时，该 socket 可能仍被 getWebSockets() 返回）
   private getOnlineUsers(exclude?: WebSocket): UserInfo[] {
     const users = new Map<number, UserInfo>();
     for (const sock of this.ctx.getWebSockets()) {
       if (sock === exclude) continue;
       try {
-        const user = sock.deserializeAttachment() as UserInfo | undefined;
-        if (user && !users.has(user.userId)) {
-          users.set(user.userId, user);
+        const att = sock.deserializeAttachment() as AttachmentUser | undefined;
+        if (att && att.userId != null && !users.has(att.userId)) {
+          users.set(att.userId, {
+            userId: att.userId,
+            nickname: att.nickname ?? "匿名",
+            avatarUrl: att.avatarUrl ?? null,
+            isAdmin: !!att.isAdmin,
+          });
         }
       } catch {
         // 忽略无法读取状态的连接
@@ -179,13 +240,37 @@ export class ChatRoom extends DurableObject {
     return Array.from(users.values());
   }
 
-  // 广播在线用户列表
-  private broadcastOnlineUsers(exclude?: WebSocket): void {
-    const users = this.getOnlineUsers(exclude);
+  // 读取离线公告宽限 overlay（storage 持久化，跨 DO 休眠存活）
+  private async getClosingMap(): Promise<Record<string, ClosingInfo>> {
+    try {
+      const raw = await this.ctx.storage.get<string>(CLOSING_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  // 广播在线用户列表（真实在线 + 宽限期内未公告下线的用户，避免列表闪烁）
+  private async broadcastOnlineUsers(): Promise<void> {
+    const users = new Map<number, UserInfo>();
+    for (const u of this.getOnlineUsers()) {
+      users.set(u.userId, u);
+    }
+    const grace = await this.getClosingMap();
+    for (const info of Object.values(grace)) {
+      if (!users.has(info.userId)) {
+        users.set(info.userId, {
+          userId: info.userId,
+          nickname: info.nickname,
+          avatarUrl: info.avatarUrl,
+          isAdmin: false,
+        });
+      }
+    }
     this.broadcast({
       type: "online_users",
-      count: users.length,
-      users: users.map((u) => ({
+      count: users.size,
+      users: Array.from(users.values()).map((u) => ({
         userId: u.userId,
         nickname: u.nickname,
         avatarUrl: u.avatarUrl,
@@ -194,13 +279,28 @@ export class ChatRoom extends DurableObject {
     });
   }
 
+  // 安排一次不早于 minDelay 毫秒后的 alarm；若已有更早的 alarm 则不动（避免推迟到期处理）
+  private async scheduleAlarm(minDelay: number): Promise<void> {
+    const target = Date.now() + minDelay;
+    const existing = await this.ctx.storage.getAlarm();
+    if (existing == null || existing > target) {
+      await this.ctx.storage.setAlarm(target);
+    }
+  }
+
   // 发送消息
   private async handleMessage(ws: WebSocket, data: any): Promise<void> {
-    const user = ws.deserializeAttachment() as UserInfo | undefined;
-    if (!user) {
+    const att = ws.deserializeAttachment() as AttachmentUser | undefined;
+    if (!att || att.userId == null) {
       ws.send(JSON.stringify({ type: "error", message: "请先登录" }));
       return;
     }
+    const user: UserInfo = {
+      userId: att.userId,
+      nickname: att.nickname ?? "匿名",
+      avatarUrl: att.avatarUrl ?? null,
+      isAdmin: !!att.isAdmin,
+    };
 
     // 发送节流：同一用户 800ms 内最多发 1 条
     const nowMs = Date.now();
@@ -264,11 +364,17 @@ export class ChatRoom extends DurableObject {
 
   // 撤回消息
   private async handleDelete(ws: WebSocket, messageId: number): Promise<void> {
-    const user = ws.deserializeAttachment() as UserInfo | undefined;
-    if (!user) {
+    const att = ws.deserializeAttachment() as AttachmentUser | undefined;
+    if (!att || att.userId == null) {
       ws.send(JSON.stringify({ type: "error", message: "请先登录" }));
       return;
     }
+    const user: UserInfo = {
+      userId: att.userId,
+      nickname: att.nickname ?? "匿名",
+      avatarUrl: att.avatarUrl ?? null,
+      isAdmin: !!att.isAdmin,
+    };
 
     // 撤回节流：同一用户 300ms 内最多撤回 1 条
     const nowMs = Date.now();
@@ -366,38 +472,98 @@ export class ChatRoom extends DurableObject {
     reason: string,
     wasClean: boolean
   ): Promise<void> {
-    // compat date < 2026-04-07 时必须手动回复 Close 帧完成握手，
-    // 否则连接停留在 CLOSING 状态，getWebSockets() 仍返回它，在线列表无法移除离线用户
-    try {
-      ws.close(code, reason);
-    } catch {
-      // 连接已关闭，忽略
-    }
-    // 连接断开后广播最新在线用户列表
-    // 排除自身：CLOSING 状态下 getWebSockets() 仍可能返回该 socket，不排除会导致离线用户残留
-    this.broadcastOnlineUsers(ws);
+    // compat date ≥ 2026-04-07：runtime 已自动回复 Close 帧完成握手，无需手动 ws.close()
 
-    // 读取该连接的用户信息（CLOSING 阶段 attachment 仍可读，用 try 包裹）
+    let att: AttachmentUser | undefined;
     try {
-      const closing = ws.deserializeAttachment() as UserInfo | undefined;
-      if (closing) {
-        // 排除自身后若该用户已无其他连接，说明完全下线，广播下线事件
-        const stillOnline = this.getOnlineUsers(ws).some(
-          (u) => u.userId === closing.userId
-        );
-        if (!stillOnline) {
-          this.broadcast({
-            type: "user_offline",
-            user: {
-              userId: closing.userId,
-              nickname: closing.nickname,
-              avatarUrl: closing.avatarUrl,
-            },
-          });
-        }
-      }
+      att = ws.deserializeAttachment() as AttachmentUser | undefined;
     } catch {
       // 无法读取附件信息则跳过
+    }
+    // 未完成认证的连接不影响在线状态
+    if (!att || att.userId == null) return;
+
+    // 排除自身后若该用户仍有其他在线连接（多标签页只关其一），不算下线，直接返回
+    const stillOnline = this.getOnlineUsers(ws).some(
+      (u) => u.userId === att.userId
+    );
+    if (stillOnline) return;
+
+    // 该用户唯一连接已断开：写入离线公告宽限 overlay。
+    // 宽限期内重新认证则视为闪断/刷新页面（静默恢复，不产生噪音）；
+    // 到期仍无则 alarm 负责广播 user_offline 并把该用户移出在线列表。
+    const grace = await this.getClosingMap();
+    grace[att.userId] = {
+      userId: att.userId,
+      nickname: att.nickname ?? "匿名",
+      avatarUrl: att.avatarUrl ?? null,
+      expiresAt: Date.now() + OFFLINE_GRACE_MS,
+    };
+    await this.ctx.storage.put(CLOSING_KEY, JSON.stringify(grace));
+    await this.scheduleAlarm(OFFLINE_GRACE_MS);
+  }
+
+  // 周期巡检 alarm（DO 休眠时也会唤醒执行，Hibernation 架构下不能依赖 setTimeout）：
+  // ① 宽限期到期仍无重新认证的用户 → 移出在线列表并广播 user_offline
+  // ② 收割僵尸连接（超过 IDLE_TIMEOUT_MS 无任何消息，含从未认证的占位连接）
+  async alarm(): Promise<void> {
+    const now = Date.now();
+
+    // ① 先处理已到期的宽限 overlay（列表移除与公告必须一致）
+    const grace = await this.getClosingMap();
+    const expired: ClosingInfo[] = [];
+    for (const [uid, info] of Object.entries(grace)) {
+      if (info.expiresAt <= now) {
+        delete grace[uid];
+        expired.push(info);
+      }
+    }
+    if (expired.length) {
+      await this.ctx.storage.put(CLOSING_KEY, JSON.stringify(grace));
+      // overlay 已删除该用户 → 先刷列表让其消失，再逐个广播下线
+      await this.broadcastOnlineUsers();
+      for (const info of expired) {
+        this.broadcast({
+          type: "user_offline",
+          user: {
+            userId: info.userId,
+            nickname: info.nickname,
+            avatarUrl: info.avatarUrl,
+          },
+        });
+      }
+    }
+
+    // ② 收割僵尸连接（close 触发的 webSocketClose 会随后把已认证用户放入宽限 overlay）
+    for (const sock of this.ctx.getWebSockets()) {
+      try {
+        const att = sock.deserializeAttachment() as AttachmentUser | undefined;
+        if (!att || now - att.lastSeen > IDLE_TIMEOUT_MS) {
+          try {
+            sock.close(4001, "heartbeat timeout");
+          } catch {
+            // 已关闭则忽略
+          }
+        }
+      } catch {
+        // 忽略无法读取状态的连接
+      }
+    }
+
+    // ③ 重排下一次唤醒：重新读取 overlay（② 的 close 事件可能已追加条目），
+    //    不能依赖本方法开头读到的旧 map
+    const freshGrace = await this.getClosingMap();
+    let target: number | null = null;
+    if (this.ctx.getWebSockets().length > 0) {
+      target = now + SWEEP_INTERVAL_MS;
+    }
+    for (const info of Object.values(freshGrace)) {
+      target = target == null ? info.expiresAt : Math.min(target, info.expiresAt);
+    }
+    if (target != null) {
+      await this.ctx.storage.setAlarm(target);
+    } else {
+      await this.ctx.storage.deleteAlarm();
     }
   }
 

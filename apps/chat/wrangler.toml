@@ -1,6 +1,6 @@
 name = "loopv-chat"
 main = "src/worker.ts"
-compatibility_date = "2025-08-01"
+compatibility_date = "2026-04-07"
 
 # 静态资源目录
 [assets]
