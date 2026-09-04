@@ -2,6 +2,8 @@
 
 > 评估日期：2026-09-04 · 评估类型：代码级静态安全与隐私自审 · 结果状态：**发现高危项，建议立即整改**
 
+> **整改状态：P0/P1/P2 主要问题已于 2026-09-04 修复并部署**，详见文末「整改记录」。
+
 ## 一、评估范围
 
 本次自审覆盖处理用户真实数据的核心服务：
@@ -127,3 +129,28 @@
 11. 媒体文件名改全随机（F11）
 12. Google Fonts self-host（F13）
 13. 补改密能力 / username tombstone / 密码下限 8（G1-G3，可选）
+
+## 七、整改记录（2026-09-04 实施）
+
+本报告评估当日，P0/P1/P2 中除「F13 Google Fonts self-host」与个别附带项外均已修复并部署：
+
+| 编号 | 修复内容 | 状态 |
+|---|---|---|
+| F1 | `/api/history` 强制登录；撤回消息（deleted 1/2）返回时清空 `content/media_url/media_type` | ✅ 已修复 |
+| F2 | 封禁/删除用户/自助注销/改密后经 DO `/kick` 断开其全部 WebSocket；前端收到 `kick` 事件清 session 回登录页 | ✅ 已修复 |
+| F3 | 新增 `POST /api/auth/delete-account`（密码校验、管理员 403、级联删消息/会话/账号 + R2 媒体） | ✅ 已修复 |
+| F4 | 删除消息/批量删除级联清理 R2 对象；更换头像删除旧对象；**自助注销**用户完整清除其消息与媒体；admin 删除用户保留其历史消息（公共聊天记录），记录 username tombstone 防归属混淆 | ✅ 已修复 |
+| F5 | admin 用户列表不再返回 `plain_password`（仅创建测试用户时一次性回显）；前端移除密码列 | ✅ 已修复 |
+| F6 | 登录/注册成功后惰性清理过期 session | ✅ 已修复 |
+| P1-合规 | 注册需勾选《隐私政策》同意（前后端双校验），并同步更新 chat 手册与隐私政策 | ✅ 已修复 |
+| F8 | 全局安全头（nosniff/X-Frame-Options/Referrer-Policy）+ HTML CSP（含 fonts/data/blob 源）；`serveAsset` 兜底包装保证静态页生效 | ✅ 已修复 |
+| F9 | 封禁账号登录不再返回 403，与不存在/密码错误统一 401 文案（收敛枚举） | ✅ 已修复 |
+| F10 | RateLimiter DO 增加每日 Alarm 清理过期键 | ✅ 已修复 |
+| F11 | 媒体/头像文件名改 32 位加密随机，不再含 userId/时间戳 | ✅ 已修复 |
+| G1 | 新增 `POST /api/auth/change-password`（改密后清空全部 session + kick 下线） | ✅ 已修复 |
+| G2 | 注销/删除用户记录 username tombstone（settings `deleted_usernames`），注册时拒绝同名 | ✅ 已修复 |
+| G3 | 密码下限 6 → 8（注册/改密/创建测试用户，含前端 placeholder 与手册） | ✅ 已修复 |
+| F13 | Google Fonts self-host（跨 portal/docs/chat/admin 4 站，需替换字体资源） | ⏳ 待办（低优先，另立任务） |
+| G4 | `c.req.json()` 非法输入 400 处理 | ⏳ 待办（可用性噪音，低优先） |
+
+**残余风险提示**：媒体删除仍受浏览器 `Cache-Control: immutable, max-age=31536000` 本地缓存影响（服务端对象已删、新请求 404；已缓存副本最长 1 年自然过期）。如需即时失效需配合缓存版本化或缩短缓存时长，列入后续产品决策。

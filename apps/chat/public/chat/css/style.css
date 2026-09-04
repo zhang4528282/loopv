@@ -1492,6 +1492,106 @@ svg {
 }
 
 /* ============================================================
+   同意隐私政策（认证表单，仅注册模式）
+   ============================================================ */
+/* 覆盖 .field label 默认「标签在上、行级块」的布局：复选框 + 文案同一行 */
+.field .agree-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 0;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+
+/* 覆盖 .field input 默认全宽灰底输入框样式，还原为紧凑的原生复选框 */
+.field .agree-label .agree-checkbox {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
+  padding: 0;
+  accent-color: #2e5d4f; /* 与墨绿点缀保持一致 */
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.field .agree-label .agree-checkbox:focus-visible {
+  outline: 2px solid #2e5d4f;
+  outline-offset: 2px;
+}
+
+.field .agree-label a {
+  color: #2e5d4f;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.field .agree-label a:hover {
+  color: var(--text);
+}
+
+/* ============================================================
+   设置弹窗 — 账号安全
+   ============================================================ */
+/* 内容变长后的小屏兜底：弹窗内允许纵向滚动，避免溢出视口 */
+#settings-modal .modal,
+#delete-account-modal .modal {
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* 「修改密码」按钮与上方输入框、下方危险区分隔的间距 */
+.btn-security {
+  margin-top: 2px;
+}
+
+/* 危险区：与修改密码部分用细分隔线分开 */
+.danger-zone {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.danger-hint {
+  margin-bottom: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+
+/* 管理员小字提示 */
+.danger-zone .hint {
+  display: block;
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* 注销确认弹窗 */
+#delete-account-modal .modal-head {
+  justify-content: center; /* 与撤回确认弹窗一致，标题居中 */
+}
+
+#delete-account-modal .confirm-text {
+  margin-bottom: 14px;
+}
+
+#delete-account-modal .confirm-actions {
+  margin-top: 20px;
+}
+
+/* ============================================================
    媒体预览弹窗
    ============================================================ */
 .media-preview {

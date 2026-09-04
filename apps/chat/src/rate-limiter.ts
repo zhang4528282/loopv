@@ -5,6 +5,7 @@ import { DurableObject } from "cloudflare:workers";
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_FAILURES = 5;
 const LOCK_MS = 15 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 interface RateState {
   count: number;
@@ -30,6 +31,12 @@ export class RateLimiter extends DurableObject {
     const key = `rl:${ip}`;
     const now = Date.now();
     const action = url.pathname;
+
+    // 确保存在周期清理 alarm（每天一次，惰性设置，首次访问时注册）
+    const existingAlarm = await this.ctx.storage.getAlarm();
+    if (existingAlarm === null) {
+      await this.ctx.storage.setAlarm(Date.now() + DAY_MS);
+    }
 
     // 检查是否被锁定
     if (action === "/check") {
@@ -64,5 +71,20 @@ export class RateLimiter extends DurableObject {
     }
 
     return Response.json({ error: "not found" }, 404);
+  }
+
+  // DO Alarm：每天清理一次已过期且未处于锁定的限流键，避免 IP 记录长期残留
+  async alarm(): Promise<void> {
+    const now = Date.now();
+    const keys = await this.ctx.storage.list();
+    for (const [key, raw] of keys) {
+      const s = raw as RateState | null;
+      // 窗口已过期且锁定期也已结束的键才删除（勿破坏 getState 的锁定保留语义）
+      if (s && s.lockedUntil <= now && now - s.windowStart > WINDOW_MS) {
+        await this.ctx.storage.delete(key);
+      }
+    }
+    // 安排下一次清理
+    await this.ctx.storage.setAlarm(Date.now() + DAY_MS);
   }
 }

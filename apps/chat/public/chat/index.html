@@ -63,7 +63,7 @@
               id="auth-password"
               type="password"
               name="password"
-              placeholder="6-64 个字符"
+              placeholder="8-64 个字符"
               maxlength="64"
               autocomplete="current-password"
             />
@@ -116,6 +116,15 @@
             maxlength="64"
             autocomplete="off"
           />
+        </div>
+
+        <div class="field hidden" id="agree-field">
+          <label class="agree-label" for="auth-agree">
+            <input type="checkbox" id="auth-agree" name="agreement" class="agree-checkbox" />
+            <span class="agree-text">我已阅读并同意
+              <a href="https://docs.loopv.net/privacy-policy" target="_blank" rel="noopener">《LoopV 隐私政策》</a>
+            </span>
+          </label>
         </div>
 
         <div class="auth-error" id="auth-error" role="alert"></div>
@@ -300,6 +309,30 @@
         </div>
       </div>
 
+      <div class="settings-group">
+        <div class="settings-group-title">账号安全</div>
+
+        <div class="field">
+          <label for="pwd-old">当前密码</label>
+          <input id="pwd-old" type="password" placeholder="请输入当前密码" maxlength="64" autocomplete="current-password" />
+        </div>
+        <div class="field">
+          <label for="pwd-new">新密码</label>
+          <input id="pwd-new" type="password" placeholder="8-64 个字符" maxlength="64" autocomplete="new-password" />
+        </div>
+        <div class="field">
+          <label for="pwd-confirm">确认新密码</label>
+          <input id="pwd-confirm" type="password" placeholder="再次输入新密码" maxlength="64" autocomplete="new-password" />
+        </div>
+        <button class="btn-secondary btn-security" id="btn-change-password" type="button">修改密码</button>
+
+        <div class="danger-zone">
+          <p class="danger-hint" id="delete-account-hint">注销将永久删除账号、头像及你发送的全部消息与媒体，且不可恢复</p>
+          <button class="btn-danger" id="btn-delete-account" type="button">注销账号</button>
+          <p class="hint hidden" id="admin-no-delete-hint">管理员账号不支持自助注销</p>
+        </div>
+      </div>
+
       <div class="modal-actions">
         <button class="btn-primary btn-block" id="btn-save-settings" type="button">保存</button>
       </div>
@@ -316,6 +349,24 @@
       <div class="confirm-actions">
         <button class="btn-secondary" id="btn-confirm-cancel" type="button">取消</button>
         <button class="btn-danger" id="btn-confirm-ok" type="button">确认撤回</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 注销账号确认弹窗 -->
+  <div class="modal-overlay hidden" id="delete-account-modal">
+    <div class="modal">
+      <div class="modal-head">
+        <h3>注销账号</h3>
+      </div>
+      <p class="confirm-text">此操作将永久删除你的账号、头像及发送的全部消息与媒体，且不可恢复。请谨慎确认。</p>
+      <div class="field">
+        <label for="delete-account-password">输入密码确认</label>
+        <input id="delete-account-password" type="password" placeholder="请输入当前密码" maxlength="64" autocomplete="current-password" />
+      </div>
+      <div class="confirm-actions">
+        <button class="btn-secondary" id="btn-delete-cancel" type="button">取消</button>
+        <button class="btn-danger" id="btn-delete-confirm" type="button">确认注销</button>
       </div>
     </div>
   </div>

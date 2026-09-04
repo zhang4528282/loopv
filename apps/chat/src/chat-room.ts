@@ -67,6 +67,25 @@ export class ChatRoom extends DurableObject {
       return new Response("ok");
     }
 
+    // 内部踢出请求（封禁/删除用户/注销/改密后由 worker 调用，断开该用户全部在线连接）
+    if (url.pathname === "/kick" && request.method === "POST") {
+      try {
+        const { userId, reason } = await request.json();
+        for (const sock of this.ctx.getWebSockets()) {
+          try {
+            const u = sock.deserializeAttachment() as UserInfo | undefined;
+            if (u && u.userId === userId) {
+              sock.send(JSON.stringify({ type: "kick", reason }));
+              sock.close(4001, String(reason || "kicked"));
+            }
+          } catch { /* 忽略单连接失败 */ }
+        }
+      } catch (e) {
+        console.error("kick error:", e);
+      }
+      return new Response("ok");
+    }
+
     // WebSocket 升级
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);

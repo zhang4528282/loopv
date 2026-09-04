@@ -72,6 +72,7 @@ apps/
 ### settings 表（key/value 键值对，002 迁移）
 - `invite_code_enabled` / `invite_code`：注册邀请码开关与邀请码（admin 后台维护）
 - `docs_hidden`：docs.loopv.net 隐藏文档 slug 列表（JSON 数组，admin 文档管理维护）
+- `deleted_usernames`：已注销/被删除用户名列表（JSON 数组，用户名 tombstone，同名禁止重新注册，防历史归属混淆）
 
 ## 关键设计决策
 

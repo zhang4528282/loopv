@@ -80,11 +80,13 @@ const dom = {
   authPassword: $("#auth-password"),
   authPasswordConfirm: $("#auth-password-confirm"),
   authInviteCode: $("#auth-invite-code"),
+  authAgree: $("#auth-agree"),
   authError: $("#auth-error"),
   authSubmit: $("#auth-submit"),
   nicknameField: $("#nickname-field"),
   passwordConfirmField: $("#password-confirm-field"),
   inviteCodeField: $("#invite-code-field"),
+  agreeField: $("#agree-field"),
   tabLogin: $("#tab-login"),
   tabRegister: $("#tab-register"),
 
@@ -128,6 +130,19 @@ const dom = {
   settingsAvatarPreview: $("#settings-avatar-preview"),
   btnAvatarUpload: $("#btn-avatar-upload"),
   avatarInput: $("#avatar-input"),
+
+  // 账号安全（设置弹窗）
+  pwdOld: $("#pwd-old"),
+  pwdNew: $("#pwd-new"),
+  pwdConfirm: $("#pwd-confirm"),
+  btnChangePassword: $("#btn-change-password"),
+  btnDeleteAccount: $("#btn-delete-account"),
+  deleteAccountHint: $("#delete-account-hint"),
+  adminNoDeleteHint: $("#admin-no-delete-hint"),
+  deleteAccountModal: $("#delete-account-modal"),
+  deleteAccountPassword: $("#delete-account-password"),
+  btnDeleteCancel: $("#btn-delete-cancel"),
+  btnDeleteConfirm: $("#btn-delete-confirm"),
 
   // 其他
   btnLogout: $("#btn-logout"),
@@ -306,6 +321,8 @@ function setMode(mode) {
   dom.tabRegister.classList.toggle("active", isRegister);
   dom.nicknameField.classList.toggle("hidden", !isRegister);
   dom.passwordConfirmField.classList.toggle("hidden", !isRegister);
+  // 同意隐私政策：仅注册模式显示（登录模式不显示；切回注册时保留上次勾选状态）
+  dom.agreeField.classList.toggle("hidden", !isRegister);
   // 邀请码框仅在注册模式且后端开启验证时显示
   dom.inviteCodeField.classList.toggle("hidden", !(isRegister && state.inviteEnabled));
   dom.authSubmit.textContent = isRegister ? "注 册" : "登 录";
@@ -331,6 +348,9 @@ function resetPasswordVisibility() {
 function showAuth() {
   dom.chatView.classList.add("hidden");
   dom.authView.classList.remove("hidden");
+  // 被踢下线/注销等场景下若设置或注销确认弹窗仍开着，一并关闭，避免残留在登录页上方
+  dom.settingsModal.classList.add("hidden");
+  dom.deleteAccountModal.classList.add("hidden");
   setMode(state.mode);
 }
 
@@ -397,11 +417,23 @@ async function handleAuthSubmit(e) {
     return;
   }
 
+  // 注册模式：必须勾选同意隐私政策
+  if (state.mode === "register" && !dom.authAgree.checked) {
+    dom.authError.textContent = "请先阅读并同意《隐私政策》";
+    return;
+  }
+
   dom.authSubmit.disabled = true;
   try {
     const endpoint = state.mode === "register" ? "/api/auth/register" : "/api/auth/login";
     const body = state.mode === "register"
-      ? { username, password, nickname: nickname || username, invite_code: dom.authInviteCode.value.trim() }
+      ? {
+          username,
+          password,
+          nickname: nickname || username,
+          invite_code: dom.authInviteCode.value.trim(),
+          agreement: true,
+        }
       : { username, password };
 
     const data = await api(endpoint, { method: "POST", body });
@@ -423,6 +455,20 @@ async function handleLogout() {
   }
   state.intentionalClose = true;
   if (state.ws) state.ws.close();
+  clearSession();
+  showAuth();
+}
+
+// 本地强制登出回登录页：服务端已判定会话失效（改密/注销）时使用，不再自动重连
+function forceLogout() {
+  state.intentionalClose = true;
+  if (state.ws) {
+    try {
+      state.ws.close();
+    } catch {
+      /* 忽略关闭异常 */
+    }
+  }
   clearSession();
   showAuth();
 }
@@ -636,6 +682,27 @@ function handleWsMessage(data) {
     case "pong":
       // 心跳响应，无需处理
       break;
+
+    case "kick": {
+      // 服务端判定会话失效（封禁/注销/修改密码）：提示原因后登出，不自动重连
+      const reasonMap = {
+        banned: "账号已被封禁",
+        deleted: "账号已被注销或删除",
+        password_changed: "密码已修改，请重新登录",
+      };
+      toast(reasonMap[data.reason] || "登录状态已失效", "error");
+      state.intentionalClose = true;
+      if (state.ws) {
+        try {
+          state.ws.close();
+        } catch {
+          /* 忽略关闭异常 */
+        }
+      }
+      clearSession();
+      showAuth();
+      break;
+    }
 
     default:
       break;
@@ -1206,6 +1273,21 @@ function openSettings() {
   dom.settingSound.checked = getSoundEnabled();
   dom.settingMsgSound.checked = getMsgSoundEnabled();
   renderSettingsAvatar();
+
+  // 账号安全：清空上次遗留的密码输入与按钮状态
+  dom.pwdOld.value = "";
+  dom.pwdNew.value = "";
+  dom.pwdConfirm.value = "";
+  dom.btnChangePassword.disabled = false;
+  dom.btnDeleteConfirm.disabled = false;
+  dom.deleteAccountModal.classList.add("hidden");
+  dom.deleteAccountPassword.value = "";
+  // 管理员不支持自助注销：隐藏注销入口与危险说明，仅显示提示小字
+  const isAdmin = Boolean(state.user?.is_admin);
+  dom.deleteAccountHint.classList.toggle("hidden", isAdmin);
+  dom.btnDeleteAccount.classList.toggle("hidden", isAdmin);
+  dom.adminNoDeleteHint.classList.toggle("hidden", !isAdmin);
+
   dom.settingsModal.classList.remove("hidden");
 }
 
@@ -1266,6 +1348,83 @@ async function saveSettings() {
     toast(err.message || "保存失败", "error");
   } finally {
     dom.btnSaveSettings.disabled = false;
+  }
+}
+
+// ========== 账号安全 ==========
+// 修改密码：成功即被服务端登出（全部会话失效），回登录页
+async function handleChangePassword() {
+  const oldPassword = dom.pwdOld.value;
+  const newPassword = dom.pwdNew.value;
+
+  if (!oldPassword) {
+    toast("请输入当前密码", "error");
+    return;
+  }
+  if (!newPassword) {
+    toast("请输入新密码", "error");
+    return;
+  }
+  if (newPassword.length < 8) {
+    toast("新密码长度不能少于 8 个字符", "error");
+    return;
+  }
+  if (newPassword !== dom.pwdConfirm.value) {
+    toast("两次输入的新密码不一致", "error");
+    return;
+  }
+
+  dom.btnChangePassword.disabled = true;
+  try {
+    await api("/api/auth/change-password", {
+      method: "POST",
+      body: { old_password: oldPassword, new_password: newPassword },
+    });
+    toast("密码已修改，请重新登录", "success");
+    // 服务端已使该账号全部会话失效，按 kick 同款流程本地登出，不自动重连
+    forceLogout();
+  } catch (err) {
+    toast(err.message || "修改密码失败", "error");
+  } finally {
+    dom.btnChangePassword.disabled = false;
+  }
+}
+
+// 注销账号：打开确认弹窗（清空密码框）
+function openDeleteAccountModal() {
+  dom.deleteAccountPassword.value = "";
+  dom.deleteAccountModal.classList.remove("hidden");
+  dom.deleteAccountPassword.focus();
+}
+
+function closeDeleteAccountModal() {
+  dom.deleteAccountModal.classList.add("hidden");
+  dom.deleteAccountPassword.value = "";
+}
+
+// 注销账号：确认后调用后端接口，成功即登出
+async function confirmDeleteAccount() {
+  const password = dom.deleteAccountPassword.value;
+  if (!password) {
+    toast("请输入密码", "error");
+    return;
+  }
+
+  dom.btnDeleteConfirm.disabled = true;
+  try {
+    await api("/api/auth/delete-account", {
+      method: "POST",
+      body: { password },
+    });
+    toast("账号已注销", "success");
+    closeDeleteAccountModal();
+    forceLogout();
+  } catch (err) {
+    // 403 = 管理员不支持自助注销（后台可能已提升权限），关闭弹窗；其余错误保留弹窗以便重试
+    if (err.status === 403) closeDeleteAccountModal();
+    toast(err.message || "注销账号失败", "error");
+  } finally {
+    dom.btnDeleteConfirm.disabled = false;
   }
 }
 
@@ -1345,6 +1504,7 @@ function bindEvents() {
       closePreview();
       dom.settingsModal.classList.add("hidden");
       closeConfirmModal();
+      closeDeleteAccountModal();
       dom.emojiPicker.classList.add("hidden");
       closeOnlinePanel();
     }
@@ -1382,6 +1542,22 @@ function bindEvents() {
     renderSettingsAvatar();
   });
   dom.btnSaveSettings.addEventListener("click", saveSettings);
+
+  // 账号安全：修改密码 / 注销账号
+  dom.btnChangePassword.addEventListener("click", handleChangePassword);
+  dom.btnDeleteAccount.addEventListener("click", openDeleteAccountModal);
+  dom.btnDeleteCancel.addEventListener("click", closeDeleteAccountModal);
+  dom.btnDeleteConfirm.addEventListener("click", confirmDeleteAccount);
+  dom.deleteAccountModal.addEventListener("click", (e) => {
+    if (e.target === dom.deleteAccountModal) closeDeleteAccountModal();
+  });
+  // 密码框回车即提交注销
+  dom.deleteAccountPassword.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      dom.btnDeleteConfirm.click();
+    }
+  });
 
   // 在线成员
   dom.btnOnline.addEventListener("click", (e) => {

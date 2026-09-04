@@ -63,6 +63,87 @@ const UPLOAD_LIMIT_MB: Record<string, number> = {
   video: 50,
 };
 
+// 密码最小长度（安全自审 G3：原 6 位下限过弱，统一提为 8）
+const PASSWORD_MIN = 8;
+// 隐私政策页地址（注册同意勾选提示参考用）
+const PRIVACY_POLICY_URL = "https://docs.loopv.net/privacy-policy";
+// settings 表中「已注销/被删用户名」列表的 key（value 为 JSON 字符串数组）
+const DELETED_USERNAMES_KEY = "deleted_usernames";
+
+// 读取注销/删除过的用户名列表（G2 username tombstone）：解析失败或无值均返回 []
+async function getDeletedUsernames(db: D1Database): Promise<string[]> {
+  try {
+    const row = await db
+      .prepare(`SELECT value FROM settings WHERE key = ?1`)
+      .bind(DELETED_USERNAMES_KEY)
+      .first();
+    const raw = (row?.value as string) || "";
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((s: unknown) => typeof s === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+async function isUsernameDeleted(db: D1Database, username: string): Promise<boolean> {
+  const list = await getDeletedUsernames(db);
+  return list.includes(username);
+}
+
+async function addDeletedUsername(db: D1Database, username: string): Promise<void> {
+  const list = await getDeletedUsernames(db);
+  if (list.includes(username)) return;
+  list.push(username);
+  await db
+    .prepare(
+      `INSERT INTO settings (key, value) VALUES (?1, ?2)
+       ON CONFLICT(key) DO UPDATE SET value = ?2`
+    )
+    .bind(DELETED_USERNAMES_KEY, JSON.stringify(list))
+    .run();
+}
+
+// 清理过期 session（登录/注册成功时顺带执行，F6）
+async function cleanupExpiredSessions(db: D1Database): Promise<void> {
+  const now = Math.floor(Date.now() / 1000);
+  await db.prepare(`DELETE FROM sessions WHERE expires_at < ?1`).bind(now).run();
+}
+
+// 按 `/media/<name>` 形式的 URL 删除 R2 对象（级联清理用，容错静默、不阻断主流程）
+async function deleteR2ByUrl(env: Bindings, url: string): Promise<void> {
+  try {
+    const prefix = "/media/";
+    if (!url.startsWith(prefix)) return;
+    const name = url.slice(prefix.length);
+    if (!name) return;
+    await env.MEDIA_BUCKET.delete(name);
+  } catch {
+    // 删除失败仅静默跳过（对象残留不影响业务）
+  }
+}
+
+// 通知 ChatRoom DO 强制某用户下线（封禁/注销/改密后实时生效，F2）
+async function kickUser(env: Bindings, userId: number, reason: string): Promise<void> {
+  try {
+    const id = env.CHAT_ROOM.idFromName("main");
+    const stub = env.CHAT_ROOM.get(id);
+    await stub.fetch("https://internal/kick", {
+      method: "POST",
+      body: JSON.stringify({ userId, reason }),
+    });
+  } catch (e) {
+    console.error("kickUser error:", e);
+  }
+}
+
+// 全随机媒体文件名（F11）：generateToken 返回 64 位 hex，取前 32 位拼名，杜绝文件名可推测
+function randomMediaName(ext: string, prefix = "m"): string {
+  return `${prefix}-${generateToken().slice(0, 32)}.${ext}`;
+}
+
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 app.use(
@@ -87,6 +168,31 @@ app.use(
   })
 );
 app.use("*", prettyJSON());
+
+// 安全响应头 + CSP（F8）：所有响应统一加基础安全头，HTML 响应附加 CSP
+const CSP_VALUE =
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://docs.loopv.net wss: ws:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+
+// 给任意 Response headers 应用安全头（Hono 中间件与 serveAsset 兜底共用，
+// 因 ASSETS.fetch 返回的 Response 头可能不可变，静态 HTML 需在 serveAsset 重建响应）
+function applySecurityHeaders(headers: Headers): void {
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("X-Frame-Options", "DENY");
+  headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  const ct = headers.get("content-type") || "";
+  if (ct.includes("text/html")) {
+    headers.set("Content-Security-Policy", CSP_VALUE);
+  }
+}
+
+app.use("*", async (c, next) => {
+  await next();
+  try {
+    applySecurityHeaders(c.res.headers);
+  } catch {
+    // 部分响应（流式/只读头等）不可变时静默跳过，静态资源由 serveAsset 兜底
+  }
+});
 
 // ===================== 工具函数 =====================
 
@@ -229,14 +335,18 @@ app.post("/api/auth/register", async (c) => {
   const password = body.password || "";
   const nickname = (body.nickname || "").trim() || username;
 
+  // 注册前必须同意隐私政策（P1 合规）
+  if (body.agreement !== true) {
+    return c.json({ error: "请先阅读并同意《隐私政策》" }, 400);
+  }
   if (!username || !password) {
     return c.json({ error: "用户名和密码不能为空" }, 400);
   }
   if (username.length < 2 || username.length > 20) {
     return c.json({ error: "用户名长度需在 2-20 个字符之间" }, 400);
   }
-  if (password.length < 6 || password.length > 64) {
-    return c.json({ error: "密码长度需在 6-64 个字符之间" }, 400);
+  if (password.length < PASSWORD_MIN || password.length > 64) {
+    return c.json({ error: "密码长度需在 8-64 个字符之间" }, 400);
   }
   if (nickname.length > 20) {
     return c.json({ error: "昵称长度不能超过 20 个字符" }, 400);
@@ -273,6 +383,12 @@ app.post("/api/auth/register", async (c) => {
     return c.json({ error: "用户名已被占用" }, 409);
   }
 
+  // 用户名 tombstone（G2）：注销/删除过的用户名不允许重新注册，防止历史归属混淆
+  if (await isUsernameDeleted(c.env.DB, username)) {
+    await rateLimit(c, "hit");
+    return c.json({ error: "用户名已被占用" }, 409);
+  }
+
   const salt = generateSalt();
   const passwordHash = await hashPassword(password, salt);
 
@@ -288,6 +404,9 @@ app.post("/api/auth/register", async (c) => {
 
   const userId = result.meta.last_row_id ?? 0;
   const token = await createSession(c.env.DB, userId as number);
+
+  // 顺带清理过期 session（F6）
+  await cleanupExpiredSessions(c.env.DB);
 
   await rateLimit(c, "reset");
 
@@ -323,8 +442,10 @@ app.post("/api/auth/login", async (c) => {
     return c.json({ error: "用户名或密码错误" }, 401);
   }
 
+  // 封禁用户与「用户不存在/密码错误」返回一致文案（F9 防枚举）
   if ((user.banned as number) === 1) {
-    return c.json({ error: "账号已被封禁" }, 403);
+    await rateLimit(c, "hit");
+    return c.json({ error: "用户名或密码错误" }, 401);
   }
 
   const passwordHash = await hashPassword(password, user.salt as string);
@@ -334,6 +455,9 @@ app.post("/api/auth/login", async (c) => {
   }
 
   const token = await createSession(c.env.DB, user.id as number);
+
+  // 顺带清理过期 session（F6）
+  await cleanupExpiredSessions(c.env.DB);
 
   await rateLimit(c, "reset");
 
@@ -363,6 +487,102 @@ app.get("/api/auth/me", async (c) => {
   const user = c.get("user");
   if (!user) return c.json({ user: null });
   return c.json({ user });
+});
+
+// 用户自助注销（F3）：校验密码后删除全部数据并记录用户名 tombstone（管理员不支持）
+app.post("/api/auth/delete-account", async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: "请先登录" }, 401);
+  if (user.is_admin) {
+    return c.json({ error: "管理员账号不支持自助注销" }, 403);
+  }
+
+  const body = await c.req.json();
+  const password = body.password || "";
+
+  // 校验密码
+  const row = await c.env.DB.prepare(
+    `SELECT username, password_hash, salt, avatar_url FROM users WHERE id = ?1`
+  )
+    .bind(user.id)
+    .first();
+  if (!row) return c.json({ error: "用户不存在" }, 404);
+  const passwordHash = await hashPassword(password, row.salt as string);
+  if (!constantTimeEqual(passwordHash, row.password_hash as string)) {
+    return c.json({ error: "密码错误" }, 400);
+  }
+
+  // 级联清理 R2：头像 + 该用户所有消息附件，合并去重
+  const mediaRows = await c.env.DB.prepare(
+    `SELECT media_url FROM messages WHERE user_id = ?1 AND media_url IS NOT NULL`
+  )
+    .bind(user.id)
+    .all();
+  const urls = new Set<string>();
+  if (row.avatar_url) urls.add(row.avatar_url as string);
+  for (const m of mediaRows.results as Record<string, unknown>[]) {
+    if (m.media_url) urls.add(m.media_url as string);
+  }
+  for (const url of urls) {
+    await deleteR2ByUrl(c.env, url);
+  }
+
+  // 删除消息/会话/账号
+  await c.env.DB.prepare(`DELETE FROM messages WHERE user_id = ?1`).bind(user.id).run();
+  await c.env.DB.prepare(`DELETE FROM sessions WHERE user_id = ?1`).bind(user.id).run();
+  await c.env.DB.prepare(`DELETE FROM users WHERE id = ?1`).bind(user.id).run();
+
+  // 记录用户名 tombstone（G2），防止同名重新注册造成历史归属混淆
+  await addDeletedUsername(c.env.DB, user.username);
+
+  // 删除完成后踢下线其残留在线连接
+  await kickUser(c.env, user.id, "deleted");
+
+  return c.json({ success: true });
+});
+
+// 修改密码（G1）：成功后清空全部 session 并踢下线，强制重新登录
+app.post("/api/auth/change-password", async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: "请先登录" }, 401);
+
+  const body = await c.req.json();
+  const oldPassword = body.old_password || "";
+  const newPassword = body.new_password || "";
+  if (!oldPassword || !newPassword) {
+    return c.json({ error: "原密码和新密码不能为空" }, 400);
+  }
+  if (newPassword.length < PASSWORD_MIN || newPassword.length > 64) {
+    return c.json({ error: "密码长度需在 8-64 个字符之间" }, 400);
+  }
+  if (oldPassword === newPassword) {
+    return c.json({ error: "新密码不能与原密码相同" }, 400);
+  }
+
+  // 校验原密码
+  const row = await c.env.DB.prepare(
+    `SELECT password_hash, salt FROM users WHERE id = ?1`
+  )
+    .bind(user.id)
+    .first();
+  if (!row) return c.json({ error: "原密码错误" }, 400);
+  const oldHash = await hashPassword(oldPassword, row.salt as string);
+  if (!constantTimeEqual(oldHash, row.password_hash as string)) {
+    return c.json({ error: "原密码错误" }, 400);
+  }
+
+  // 更新密码哈希
+  const salt = generateSalt();
+  const newHash = await hashPassword(newPassword, salt);
+  await c.env.DB.prepare(`UPDATE users SET password_hash = ?1, salt = ?2 WHERE id = ?3`)
+    .bind(newHash, salt, user.id)
+    .run();
+
+  // 全部会话失效 + 踢下线
+  await c.env.DB.prepare(`DELETE FROM sessions WHERE user_id = ?1`).bind(user.id).run();
+  await kickUser(c.env, user.id, "password_changed");
+
+  return c.json({ success: true });
 });
 
 // 创建 session
@@ -408,6 +628,8 @@ app.put("/api/user/nickname", async (c) => {
 app.post("/api/user/avatar", async (c) => {
   const user = c.get("user");
   if (!user) return c.json({ error: "请先登录" }, 401);
+  // 保存旧头像 URL（UPDATE 前查询，成功替换后级联删除）
+  const oldAvatarUrl = user.avatar_url;
 
   const formData = await c.req.formData();
   const file = formData.get("file");
@@ -429,7 +651,8 @@ app.post("/api/user/avatar", async (c) => {
   if (ext === "svg") {
     return c.json({ error: "头像必须是图片" }, 400);
   }
-  const safeName = `avatar-${user.id}-${Date.now()}.${ext}`;
+  // 全随机文件名，不再含 userId/时间戳（F11 文件名不可推测）
+  const safeName = randomMediaName(ext, "avatar");
 
   await c.env.MEDIA_BUCKET.put(safeName, (file as File).stream(), {
     httpMetadata: {
@@ -450,13 +673,21 @@ app.post("/api/user/avatar", async (c) => {
 
   await notifyProfileUpdate(c.env, user.id, user.nickname, url);
 
+  // 成功替换后级联删除旧头像 R2 对象（F4），避免孤儿对象累积
+  if (oldAvatarUrl && oldAvatarUrl.startsWith("/media/")) {
+    await deleteR2ByUrl(c.env, oldAvatarUrl);
+  }
+
   return c.json({ success: true, avatar_url: url });
 });
 
 // ===================== 消息 API =====================
 
-// 获取历史消息（deleted=3 已删除的不返回）
+// 获取历史消息（需登录；deleted=3 已删除的不返回，deleted=1/2 撤回的脱敏）
 app.get("/api/history", async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: "请先登录" }, 401);
+
   const limit = Math.min(parseInt(c.req.query("limit") || "50"), 200);
   const before = parseInt(c.req.query("before") || "0");
   const beforeId = parseInt(c.req.query("before_id") || "0");
@@ -484,7 +715,17 @@ app.get("/api/history", async (c) => {
   }
 
   const { results } = await query.all();
-  return c.json({ messages: results.reverse() });
+  // F1 脱敏：撤回消息（deleted=1/2）不返回原文与媒体，仅保留元数据供前端渲染占位，
+  // 防止匿名/非发送方通过翻页拉取已撤回内容
+  const list = results as any[];
+  for (const m of list) {
+    if (m.deleted === 1 || m.deleted === 2) {
+      m.content = null;
+      m.media_url = null;
+      m.media_type = null;
+    }
+  }
+  return c.json({ messages: list.reverse() });
 });
 
 // 撤回消息（HTTP fallback）：用户撤回自己 deleted=1，管理员撤回 deleted=2
@@ -548,7 +789,8 @@ app.post("/api/upload", async (c) => {
   if (DANGEROUS_EXTS.has(ext)) {
     return c.json({ error: "不支持的文件类型" }, 400);
   }
-  const safeName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  // 全随机文件名，不再含时间戳（F11 文件名不可推测）
+  const safeName = randomMediaName(ext);
 
   await c.env.MEDIA_BUCKET.put(safeName, (file as File).stream(), {
     httpMetadata: {
@@ -748,8 +990,9 @@ app.get("/api/admin/users", adminMiddleware, async (c) => {
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  // F5：不返回 plain_password（测试用户明文密码仅限创建响应展示，列表不暴露）
   const { results } = await c.env.DB.prepare(
-    `SELECT id, username, nickname, avatar_url, is_admin, is_test, plain_password, banned, created_at FROM users ${where} ORDER BY id DESC`
+    `SELECT id, username, nickname, avatar_url, is_admin, is_test, banned, created_at FROM users ${where} ORDER BY id DESC`
   )
     .bind(...params)
     .all();
@@ -769,8 +1012,8 @@ app.post("/api/admin/users", adminMiddleware, async (c) => {
   if (username.length < 2 || username.length > 20) {
     return c.json({ error: "用户名长度需在 2-20 个字符之间" }, 400);
   }
-  if (password.length < 6 || password.length > 64) {
-    return c.json({ error: "密码长度需在 6-64 个字符之间" }, 400);
+  if (password.length < PASSWORD_MIN || password.length > 64) {
+    return c.json({ error: "密码长度需在 8-64 个字符之间" }, 400);
   }
   if (nickname.length > 20) {
     return c.json({ error: "昵称长度不能超过 20 个字符" }, 400);
@@ -818,7 +1061,7 @@ app.delete("/api/admin/users/:id", adminMiddleware, async (c) => {
   }
 
   const target = await c.env.DB.prepare(
-    `SELECT is_admin FROM users WHERE id = ?1`
+    `SELECT username, is_admin FROM users WHERE id = ?1`
   )
     .bind(userId)
     .first();
@@ -829,8 +1072,14 @@ app.delete("/api/admin/users/:id", adminMiddleware, async (c) => {
     return c.json({ error: "不能删除管理员账号" }, 400);
   }
 
+  // 记录被删用户名（G2 tombstone），防止同名重新注册造成历史归属混淆
+  await addDeletedUsername(c.env.DB, target.username as string);
+
   await c.env.DB.prepare(`DELETE FROM sessions WHERE user_id = ?1`).bind(userId).run();
   await c.env.DB.prepare(`DELETE FROM users WHERE id = ?1`).bind(userId).run();
+
+  // 删除完成后踢掉其残留在线连接（F2）
+  await kickUser(c.env, userId, "deleted");
 
   return c.json({ success: true });
 });
@@ -906,12 +1155,23 @@ app.get("/api/admin/messages", adminMiddleware, async (c) => {
   return c.json({ messages: results, total, page, limit, totalPages });
 });
 
-// 管理员删除消息（deleted=3，chat 界面不显示）
+// 管理员删除消息（deleted=3，chat 界面不显示；同时级联清理 R2 媒体，F4）
 app.post("/api/admin/messages/:id/delete", adminMiddleware, async (c) => {
   const messageId = parseInt(c.req.param("id"));
-  await c.env.DB.prepare(`UPDATE messages SET deleted = 3 WHERE id = ?1`)
+  // 先取 media_url，UPDATE 后据此物理删除 R2 对象
+  const msg = await c.env.DB.prepare(
+    `SELECT media_url FROM messages WHERE id = ?1`
+  )
     .bind(messageId)
-    .run();
+    .first();
+  if (msg) {
+    await c.env.DB.prepare(`UPDATE messages SET deleted = 3 WHERE id = ?1`)
+      .bind(messageId)
+      .run();
+    if (msg.media_url) {
+      await deleteR2ByUrl(c.env, msg.media_url as string);
+    }
+  }
   await notifyRoom(c.env, { type: "remove", ids: [messageId] });
   return c.json({ success: true });
 });
@@ -940,11 +1200,30 @@ app.post("/api/admin/messages/batch-delete", adminMiddleware, async (c) => {
   }
 
   const placeholders = numericIds.map(() => "?").join(",");
+
+  // 先取待删消息的 media_url（去重），UPDATE 后逐个物理删除 R2 对象（F4）
+  const mediaRows = await c.env.DB.prepare(
+    `SELECT media_url FROM messages WHERE id IN (${placeholders}) AND media_url IS NOT NULL`
+  )
+    .bind(...numericIds)
+    .all();
+  const mediaUrls = [
+    ...new Set(
+      (mediaRows.results as Record<string, unknown>[])
+        .map((m) => m.media_url as string)
+        .filter(Boolean)
+    ),
+  ];
+
   await c.env.DB.prepare(
     `UPDATE messages SET deleted = 3 WHERE id IN (${placeholders})`
   )
     .bind(...numericIds)
     .run();
+
+  for (const url of mediaUrls) {
+    await deleteR2ByUrl(c.env, url);
+  }
 
   await notifyRoom(c.env, { type: "remove", ids: numericIds });
 
@@ -967,11 +1246,12 @@ app.post("/api/admin/users/:id/ban", adminMiddleware, async (c) => {
     .bind(banned, userId)
     .run();
 
-  // 封禁时删除其所有 session
+  // 封禁时删除其所有 session 并踢下线在线连接（F2 封禁即时生效）
   if (banned === 1) {
     await c.env.DB.prepare(`DELETE FROM sessions WHERE user_id = ?1`)
       .bind(userId)
       .run();
+    await kickUser(c.env, userId, "banned");
   }
 
   return c.json({ success: true, banned: banned === 1 });
@@ -982,7 +1262,16 @@ app.post("/api/admin/users/:id/ban", adminMiddleware, async (c) => {
 async function serveAsset(c: any, path: string) {
   const url = new URL(c.req.url);
   url.pathname = path;
-  return c.env.ASSETS.fetch(new Request(url.toString()));
+  const res = await c.env.ASSETS.fetch(new Request(url.toString()));
+  // ASSETS.fetch 返回的 Response 头可能不可变（中间件 set 会失败），
+  // 这里重建响应确保 HTML/CSS/JS 都带上安全头（含 HTML 的 CSP）
+  const headers = new Headers(res.headers);
+  applySecurityHeaders(headers);
+  return new Response(res.body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers,
+  });
 }
 
 // chat 前端首页

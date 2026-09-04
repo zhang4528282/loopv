@@ -790,7 +790,6 @@ function renderUsers() {
   for (const u of state.users) {
     const tr = document.createElement("tr");
     const admin = isAdmin(u);
-    const test = isTest(u);
     const banned = isBanned(u);
     const role = roleOf(u);
 
@@ -844,39 +843,6 @@ function renderUsers() {
     statusBadge.textContent = banned ? "已封禁" : "正常";
     tdStatus.appendChild(statusBadge);
     tr.appendChild(tdStatus);
-
-    // 密码（测试用户显示明文，可切换）
-    const tdPwd = document.createElement("td");
-    if (test) {
-      const wrap = document.createElement("div");
-      wrap.className = "password-cell";
-      const txt = document.createElement("span");
-      txt.className = "password-value";
-      txt.dataset.pwd = u.plain_password || "";
-      txt.textContent = "••••••";
-      const toggle = document.createElement("button");
-      toggle.className = "password-toggle";
-      toggle.type = "button";
-      toggle.textContent = "显示";
-      toggle.onclick = () => {
-        if (txt.classList.contains("show")) {
-          txt.textContent = "••••••";
-          txt.classList.remove("show");
-          toggle.textContent = "显示";
-        } else {
-          txt.textContent = txt.dataset.pwd || "";
-          txt.classList.add("show");
-          toggle.textContent = "隐藏";
-        }
-      };
-      wrap.appendChild(txt);
-      wrap.appendChild(toggle);
-      tdPwd.appendChild(wrap);
-    } else {
-      tdPwd.className = "cell-dim";
-      tdPwd.textContent = "—";
-    }
-    tr.appendChild(tdPwd);
 
     // 注册时间
     const tdTime = document.createElement("td");
