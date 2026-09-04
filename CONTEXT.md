@@ -102,7 +102,7 @@ apps/
 1. 在 Cloudflare 控制台创建 D1 (`loopv-chat-db`) 和 R2 (`loopv-chat-media`)
 2. 在 D1 Console 执行 `migrations/001_init.sql` 与 `migrations/002_invite_settings.sql`
 3. 将 D1 database_id 填入 `apps/chat/wrangler.toml`
-4. `cd apps/chat && npx wrangler deploy` 部署 Worker
+4. chat Worker 自动部署：推送到 master 触发 GitHub Actions（`.github/workflows/deploy-chat.yml`）执行 build + `wrangler deploy`（DO `new_sqlite_classes` migration 随部署自动生效），无需本地手动部署；首次使用前需在仓库 Actions secrets 配置 `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`
 5. Pages 连接 GitHub → 部署 portal（root: `/`, build: `pnpm --filter @loopv/portal build`, output: `apps/portal/dist`）
 6. Pages 连接 GitHub → 部署 docs（root: `/`, build: `pnpm --filter @loopv/docs build`, output: `apps/docs/dist`）
 7. 绑定域名：loopv.net → Pages(portal)；chat.loopv.net / admin.loopv.net → Worker；docs.loopv.net → Pages(docs)

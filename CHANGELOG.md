@@ -7,6 +7,8 @@
 - **`deploy-chat.yml` workflow**：推送 master 且改动 `apps/chat/**` / `pnpm-lock.yaml` / 本 workflow 时自动执行 `pnpm install --frozen-lockfile` → `pnpm --filter @loopv/chat build`（编译验证）→ `cloudflare/wrangler-action@v4` 部署到 Cloudflare Workers（workingDirectory = `./apps/chat`，DO `new_sqlite_classes` migration 随 deploy 自动生效）
 - 至此 loopv-chat 与 loopv / loopv-docs 均通过 GitHub 推送 master 自动部署；chat 不再需要本地手动 `wrangler deploy`
 - 先决条件：仓库 Actions secrets 需配置 `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`（未配置时 workflow 部署步骤会失败，Worker 维持线上旧版本不受影响）；D1 表结构迁移（`migrations/*.sql`）依旧需要手动执行，不随自动部署运行
+#### 文档同步
+- **AGENTS.md / CONTEXT.md 校正部署流程**：工作流约定改为「commit → push 即自动部署，本地不再手动 `wrangler deploy`（避免与 CI 重复）」，部署表与部署流程标注 chat 由 `deploy-chat.yml` 自动部署及所需 Actions secrets
 
 ### 文档站 docs.loopv.net
 #### 新增

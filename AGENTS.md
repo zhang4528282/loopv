@@ -2,7 +2,7 @@
 
 ## 工作流约定（重要）
 
-- **每次代码修改完成后，无需用户授权，自动执行：`pnpm --filter @loopv/chat build` 验证 → 更新 CHANGELOG.md（开发日志，按北京时间记录）→ git commit → git push → `cd apps/chat && npx wrangler deploy` → 验证部署（curl 线上地址）**
+- **每次代码修改完成后，无需用户授权，自动执行：涉及 chat 代码的改动先 `pnpm --filter @loopv/chat build` 验证 → 更新 CHANGELOG.md（开发日志，按北京时间记录）→ git commit → git push → 线上验证。chat 的部署由 GitHub Actions（`.github/workflows/deploy-chat.yml`）在推送后自动完成，**不需要也不应该**本地再手动 `wrangler deploy`（会与 CI 重复）**
 - 提交信息用 conventional commits 风格（feat/fix/chore/docs + 英文简述）
 - 部署前先 `pnpm --filter @loopv/chat build` 确认编译通过
 
@@ -33,7 +33,7 @@ pnpm --filter @loopv/docs build
 | 项目 | 部署方式 |
 |---|---|
 | **loopv.net** (门户) | Cloudflare Pages 连接 GitHub，推送 master 自动部署。构建命令 `pnpm --filter @loopv/portal build`，输出 `apps/portal/dist` |
-| **chat.loopv.net** (聊天室) | 在 `apps/chat/` 下手动执行 `npx wrangler deploy`。根目录 `pnpm deploy:chat` 无效——这是 pnpm 自身的 deploy 命令，不是 wrangler 的 |
+| **chat.loopv.net** (聊天室) | GitHub Actions（`.github/workflows/deploy-chat.yml`）：推送 master 且改动 `apps/chat/**` / `pnpm-lock.yaml` / workflow 时自动 `pnpm --filter @loopv/chat build` + `wrangler deploy`（workingDirectory = `./apps/chat`）。先决条件：仓库 Actions secrets 已配置 `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`；DO `new_sqlite_classes` migration 随部署自动生效，但 D1 表结构迁移（`migrations/*.sql`）仍需手动执行 |
 | **docs.loopv.net** (文档站) | Cloudflare Pages 连接 GitHub，推送 master 自动部署。构建命令 `pnpm --filter @loopv/docs build`，输出 `apps/docs/dist`。内容 = `apps/docs/src/lib/docs.ts` 的 `SOURCES` 清单中登记的文件（仓库根目录 `*.md` + `docs/*.md`）；**新增文档必须在此文件登记**，否则不进文档站 |
 
 ## 架构要点
