@@ -41,7 +41,7 @@ apps/
                            │                    │
                            │                    └── D1 持久化写入
                            │
-                           ├── GET  /api/history     → D1 读取历史（过滤已删除）
+                           ├── GET  /api/history     → D1 读取历史（需登录；过滤已删除，撤回消息脱敏不返回原文）
                            ├── POST /api/upload      → R2 存储文件
                            ├── GET  /media/:name     → R2 读取文件
                            └── admin API（撤回/删除）→ D1 + DO 广播实时推送
@@ -55,7 +55,7 @@ apps/
 | `username` / `password_hash` / `salt` | 用户名 + PBKDF2-SHA256 哈希密码 + 随机盐 |
 | `nickname` / `avatar_url` | 昵称 / 头像（R2，可选） |
 | `is_admin` | 管理员标记（第一个注册用户自动成为管理员） |
-| `is_test` | 测试用户标记（权限同普通用户，后台可看明文密码） |
+| `is_test` | 测试用户标记（权限同普通用户，后台**仅创建时一次性回显**明文密码，列表不展示） |
 | `plain_password` | 测试用户明文密码（仅 is_test=1 有值） |
 | `banned` | 封禁标记 |
 
@@ -85,6 +85,7 @@ apps/
 7. **按 IP 限流用 Durable Object**：登录/注册暴力破解防护用独立 `RateLimiter` DO（DO storage 持久化），不用 D1 建表——避免手动 SQL migration，DO 的 `new_sqlite_classes` migration 随 wrangler deploy 自动生效
 8. **上传安全策略**：R2 上传走 MIME + 扩展名双重黑名单，危险类型（html/svg/js/xml 等）直接拒绝；媒体响应加 `nosniff`；WebSocket 消息的 `media_url` 仅接受 `/media/` 前缀
 9. **文档站单一事实源**：docs.loopv.net 内容 = `apps/docs/src/lib/docs.ts` 的 `SOURCES` 清单登记的仓库 md（根目录 `*.md` + `docs/*.md`），构建时由 `apps/docs` 读取渲染成静态页，推送 master 自动重建；**新增 md 必须登记到 `SOURCES`（含 repoPath/slug/group），不会自动收录**。内容本身不做运行时编辑，但**显示开关由 admin 控制**——settings 表 `docs_hidden` 存隐藏 slug 列表，admin 保存后触发 Pages Deploy Hook（env secret `DOCS_DEPLOY_HOOK`）重建；docs 构建拉取公开 `GET /api/docs/visibility` 过滤，失败降级为全部显示；`/manifest.json` 静态端点输出全部文档（含隐藏项）供 admin 跨域读取
+10. **隐私与数据安全整改（2026-09-04）**：自审后落地一批约束——`/api/history` 强制登录且对撤回消息（deleted 1/2）返回时脱敏；封禁/删除用户/自助注销/改密经 DO 内部 `/kick` 即时断开在线连接；注销/删除用户记录 username tombstone（settings `deleted_usernames`）防历史归属混淆；RateLimiter DO 每日 Alarm 清理过期限流键；媒体/头像文件名 32 位加密随机；全站字体 self-host。详见 `docs/security-review.md`「整改记录」
 
 ## Cloudflare 资源
 
@@ -99,7 +100,7 @@ apps/
 ## 部署流程
 
 1. 在 Cloudflare 控制台创建 D1 (`loopv-chat-db`) 和 R2 (`loopv-chat-media`)
-2. 在 D1 Console 执行 `migrations/001_init.sql`
+2. 在 D1 Console 执行 `migrations/001_init.sql` 与 `migrations/002_invite_settings.sql`
 3. 将 D1 database_id 填入 `apps/chat/wrangler.toml`
 4. `cd apps/chat && npx wrangler deploy` 部署 Worker
 5. Pages 连接 GitHub → 部署 portal（root: `/`, build: `pnpm --filter @loopv/portal build`, output: `apps/portal/dist`）

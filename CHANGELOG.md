@@ -2,7 +2,40 @@
 
 ## 2026-09-04
 
-### 隐私安全整改实施（P0/P1/P2 + G1-G3）
+### 文档站 docs.loopv.net
+#### 新增
+- **docs.loopv.net 静态文档站**：新增 `apps/docs`（Astro 5 + Tailwind CSS 4，设计语言与门户一致：暖灰纸底 + 墨绿单强调色）。收录仓库全部 Markdown——根目录 `README.md`/`CONTEXT.md`/`CHANGELOG.md`/`AGENTS.md`（「项目文档」组）+ `docs/chat-manual.md`（「操作手册」组）
+- **构建时内容管线**：`src/lib/docs.ts` 用 fs 读取源 md（gray-matter 解析 + markdown-it 渲染 + markdown-it-anchor 中文锚点），URL：`/` 目录页 + `/readme` `/context` `/changelog` `/agents` `/chat-manual`；单篇页含源文件路径 mono 标注、右侧吸顶目录（客户端扫 h2/h3 生成 + IntersectionObserver 滚动高亮，无 JS 优雅降级不渲染）；README 相对链接映射到站内
+- **门户入口**：loopv.net 新增「03 — 文档」浅色纸卡区块（标题 + 说明 + docs.loopv.net 链接 + 常用文档直达行），顶栏导航与页脚新增「文档」链接
+#### 部署
+- docs.loopv.net → Cloudflare Pages 新项目 `loopv-docs`（构建 `pnpm --filter @loopv/docs build`，输出 `apps/docs/dist`，推送 master 自动部署），需在控制台创建 Pages 项目并绑定域名
+
+### 文档显示开关（admin 后台控制 docs 文章是否显示）
+#### 新增
+- **后台控制文档显隐**：admin.loopv.net 新增「文档管理」区块——列出 docs.loopv.net 全部文档（标题/分组/slug + 复用现有渐变 switch），开关控制每篇显示/隐藏，底部「保存更改」批量提交
+- **后端接口**（worker.ts）：公开 `GET /api/docs/visibility`（无需登录，返回 `{ hidden: [...] }`，docs 构建期拉取）；管理 `PUT /api/admin/docs`（adminMiddleware，slug 白名单 `^[a-z0-9-]+$`、去重、上限 100，写入 settings 表 `docs_hidden`，触发 Pages Deploy Hook 重建）
+- **docs 构建联动**：构建时拉取可见性接口，被隐藏文档不生成页面（直链 404）、不进目录、分组计数与总篇数跟随可见集合；`/manifest.json` 静态端点输出全部文档（含隐藏项，hidden 标记）供 admin 跨域读取，`public/_headers` 放行 CORS；失败降级为全部显示，绝不影响构建
+- **README 相对链接联动**：指向被隐藏文档的站内链接自动还原为纯文本，不落 404
+- 注：重建需 Deploy Hook（env secret `DOCS_DEPLOY_HOOK`），未配置时保存仍生效但需手动推送触发重建
+#### 部署
+- chat Worker 新增两组接口 + admin 前端静态资源 → `cd apps/chat && npx wrangler deploy`
+
+### 隐私安全自审与隐私政策文档
+#### 新增
+- **《LoopV 隐私政策》**（`docs/privacy-policy.md`，进 docs 站「隐私政策」组）：面向用户的合规文档——收集项（账号/消息/媒体/技术信息，明确列出**不收集**项与无广告无追踪）、存储与保护（Cloudflare 境外基础设施、PBKDF2、HTTPS、上传黑名单）、共享披露（仅基础设施 + Google Fonts）、撤回/删除的**可见性语义如实表述**（撤回不可回收已送达内容）、保存期限表、用户权利、未成年人、联系方式。注册流程接入同意勾选列为待办（见自审报告 P1）
+- **《LoopV 隐私安全自审报告》**（`docs/security-review.md`，进 docs 站「项目文档」组）：代码级静态自审（chat/admin Worker + DO + 前端 + 静态站），逐条核实 11 项既有安全控制，输出 F1-F13 发现 + 2 项附带产品缺口 + PIPL 合规对照 + P0/P1/P2 整改清单
+#### 自审关键发现（已核实，本次仅评估不修复）
+- **F1 高危**：`GET /api/history` 无强制登录且对 `deleted=1/2`（撤回）消息仍返回 `content/media_url` 原文——撤回仅是「视觉撤回」，匿名可翻页拉取全量历史与媒体 URL
+- **F2 高危**：封禁/删除用户仅清 HTTP session，不中断已建立的 WebSocket（DO 无 kick 广播），被封禁者可继续发消息直至断连
+- **F3/F4**：无用户自助注销；消息删除为软删（deleted=3）+ R2 对象无删除接口、孤儿对象累积（媒体 `immutable` 缓存 1 年，物理删除需同步 purge）
+- **F5-F13**：admin 用户列表多余返回 `plain_password` 列、过期 session/限流键无清理、localStorage 凭证 + 无 CSP、缺基础安全头、用户名枚举（注册 409 + 封禁 403 与登录 401 文案差异）、媒体文件名可推测、自增 userId 暴露、Google Fonts 第三方请求
+- 附带：无改密接口、删除用户后 username 可被重新注册致历史归属混淆、密码下限 6、非法 JSON 返回 500
+#### 文档同步
+- **docs.ts SOURCES 登记**新文档两篇（privacy-policy 入「隐私政策」组、security-review 入「项目文档」组）
+- **AGENTS.md / CONTEXT.md 校正收录规则**：此前描述为「新增 md 自动收录」，实际 docs.ts `SOURCES` 为硬编码清单、新增必须手动登记——两文件同步修正；CONTEXT 数据模型补 `settings` 表
+- **README.md** 站点表补 docs.loopv.net、文档链接区补隐私政策与自审报告入口；**chat-manual.md** 注意事项补隐私政策指引
+
+### 隐私安全整改实施（P0/P1/P2 + G1-G4）
 #### 修复
 - **F1 高危（撤回=视觉撤回）**：`/api/history` 强制登录 + 对 `deleted=1/2` 撤回消息返回时清空 `content/media_url/media_type`，匿名翻页拉取撤回原文/媒体 URL 的通道封死
 - **F2 高危（封禁不中断 WS）**：新增 DO 内部 `/kick` 端点，封禁/删除用户/自助注销/改密后断开其全部 WebSocket；chat 前端收到 `kick` 事件清 session 回登录页（不自动重连）
@@ -27,186 +60,6 @@
 - `docs/security-review.md` 追加「整改记录」表（全部 F/G 项已修复）
 - `docs/privacy-policy.md` 同步已上线能力（注册同意已接入、自助注销、修改密码、媒体级联删除、tombstone 说明、字体自托管）
 - `docs/chat-manual.md` 更新（密码 8-64、隐私勾选、账号安全区块、封禁即断连、删除用户后用户名不可再注册、测试密码仅创建时展示）
-
-### 隐私安全自审与隐私政策文档
-#### 新增
-- **《LoopV 隐私政策》**（`docs/privacy-policy.md`，进 docs 站「隐私政策」组）：面向用户的合规文档——收集项（账号/消息/媒体/技术信息，明确列出**不收集**项与无广告无追踪）、存储与保护（Cloudflare 境外基础设施、PBKDF2、HTTPS、上传黑名单）、共享披露（仅基础设施 + Google Fonts）、撤回/删除的**可见性语义如实表述**（撤回不可回收已送达内容）、保存期限表、用户权利、未成年人、联系方式。注册流程接入同意勾选列为待办（见自审报告 P1）
-- **《LoopV 隐私安全自审报告》**（`docs/security-review.md`，进 docs 站「项目文档」组）：代码级静态自审（chat/admin Worker + DO + 前端 + 静态站），逐条核实 11 项既有安全控制，输出 F1-F13 发现 + 2 项附带产品缺口 + PIPL 合规对照 + P0/P1/P2 整改清单
-#### 自审关键发现（已核实，本次仅评估不修复）
-- **F1 高危**：`GET /api/history` 无强制登录且对 `deleted=1/2`（撤回）消息仍返回 `content/media_url` 原文——撤回仅是「视觉撤回」，匿名可翻页拉取全量历史与媒体 URL
-- **F2 高危**：封禁/删除用户仅清 HTTP session，不中断已建立的 WebSocket（DO 无 kick 广播），被封禁者可继续发消息直至断连
-- **F3/F4**：无用户自助注销；消息删除为软删（deleted=3）+ R2 对象无删除接口、孤儿对象累积（媒体 `immutable` 缓存 1 年，物理删除需同步 purge）
-- **F5-F13**：admin 用户列表多余返回 `plain_password` 列、过期 session/限流键无清理、localStorage 凭证 + 无 CSP、缺基础安全头、用户名枚举（注册 409 + 封禁 403 与登录 401 文案差异）、媒体文件名可推测、自增 userId 暴露、Google Fonts 第三方请求
-- 附带：无改密接口、删除用户后 username 可被重新注册致历史归属混淆、密码下限 6、非法 JSON 返回 500
-#### 文档同步
-- **docs.ts SOURCES 登记**新文档两篇（privacy-policy 入「隐私政策」组、security-review 入「项目文档」组）
-- **AGENTS.md / CONTEXT.md 校正收录规则**：此前描述为「新增 md 自动收录」，实际 docs.ts `SOURCES` 为硬编码清单、新增必须手动登记——两文件同步修正；CONTEXT 数据模型补 `settings` 表
-- **README.md** 站点表补 docs.loopv.net、文档链接区补隐私政策与自审报告入口；**chat-manual.md** 注意事项补隐私政策指引
-
-
-### 文档站 docs.loopv.net
-#### 新增
-- **docs.loopv.net 静态文档站**：新增 `apps/docs`（Astro 5 + Tailwind CSS 4，设计语言与门户一致：暖灰纸底 + 墨绿单强调色）。收录仓库全部 Markdown——根目录 `README.md`/`CONTEXT.md`/`CHANGELOG.md`/`AGENTS.md`（「项目文档」组）+ `docs/chat-manual.md`（「操作手册」组）
-- **构建时内容管线**：`src/lib/docs.ts` 用 fs 读取源 md（gray-matter 解析 + markdown-it 渲染 + markdown-it-anchor 中文锚点），URL：`/` 目录页 + `/readme` `/context` `/changelog` `/agents` `/chat-manual`；单篇页含源文件路径 mono 标注、右侧吸顶目录（客户端扫 h2/h3 生成 + IntersectionObserver 滚动高亮，无 JS 优雅降级不渲染）；README 相对链接映射到站内
-- **门户入口**：loopv.net 新增「03 — 文档」浅色纸卡区块（标题 + 说明 + docs.loopv.net 链接 + 常用文档直达行），顶栏导航与页脚新增「文档」链接
-#### 部署
-- docs.loopv.net → Cloudflare Pages 新项目 `loopv-docs`（构建 `pnpm --filter @loopv/docs build`，输出 `apps/docs/dist`，推送 master 自动部署），需在控制台创建 Pages 项目并绑定域名
-
-### 文档显示开关（admin 后台控制 docs 文章是否显示）
-#### 新增
-- **后台控制文档显隐**：admin.loopv.net 新增「文档管理」区块——列出 docs.loopv.net 全部文档（标题/分组/slug + 复用现有渐变 switch），开关控制每篇显示/隐藏，底部「保存更改」批量提交
-- **后端接口**（worker.ts）：公开 `GET /api/docs/visibility`（无需登录，返回 `{ hidden: [...] }`，docs 构建期拉取）；管理 `PUT /api/admin/docs`（adminMiddleware，slug 白名单 `^[a-z0-9-]+$`、去重、上限 100，写入 settings 表 `docs_hidden`，触发 Pages Deploy Hook 重建）
-- **docs 构建联动**：构建时拉取可见性接口，被隐藏文档不生成页面（直链 404）、不进目录、分组计数与总篇数跟随可见集合；`/manifest.json` 静态端点输出全部文档（含隐藏项，hidden 标记）供 admin 跨域读取，`public/_headers` 放行 CORS；失败降级为全部显示，绝不影响构建
-- **README 相对链接联动**：指向被隐藏文档的站内链接自动还原为纯文本，不落 404
-- 注：重建需 Deploy Hook（env secret `DOCS_DEPLOY_HOOK`），未配置时保存仍生效但需手动推送触发重建
-#### 部署
-- chat Worker 新增两组接口 + admin 前端静态资源 → `cd apps/chat && npx wrangler deploy`
-
-## 2026-08-07
-
-### 项目初始化
-- 搭建 pnpm monorepo，包含 `apps/portal` (Astro) 和 `apps/chat` (Workers)
-- 选择 `cloudflare/workers-chat-demo` 架构 + 自行实现多媒体聊天室
-
-### 门户主页 (loopv.net)
-- Astro 5 + Tailwind CSS 4
-- 融合风格 → 后改为明亮极简风
-- 用户名: WaterMore
-
-### 聊天室 (chat.loopv.net)
-- Workers + Durable Objects + D1 + R2 + Hono
-- 支持文本/图片/视频/音频/表情包消息
-- WebSocket Hibernation API（空闲零计费）
-
-### 部署
-- D1: `loopv-chat-db`
-- R2: `loopv-chat-media`
-- Portal: Cloudflare Pages
-- Worker: `loopv-chat`
-- 域名: loopv.net → Pages, chat.loopv.net → Worker
-
-### 2026-08-07 (后续)
-- **聊天室下线**：chat.loopv.net 停止服务，代码保留在 `apps/chat/`，Worker 已删除
-- 门户移除聊天室入口卡片，Terminal 命令更新
-
-## 2026-09-01
-
-### 聊天室重新上线 + 重大重构
-
-#### 认证系统
-- 新增用户注册/登录（用户名 + 密码 + 昵称，无邮箱/手机验证）
-- 密码 PBKDF2-SHA256 + 随机盐哈希（Web Crypto API）
-- Session token 存 D1，7 天过期，登出即销毁
-- 第一个注册用户自动成为管理员
-
-#### 用户资料
-- 自主修改昵称、上传头像（R2 存储，仅图片）
-- 头像可选，无头像时显示昵称首字彩色圆底
-
-#### 消息撤回
-- 支持撤回自己的消息，不限时间
-- 管理员可撤回任意消息
-- WebSocket 实时广播撤回事件
-
-#### 时间显示
-- 所有消息统一北京时间（UTC+8）
-- 格式：`2026年08月07日 14:30`
-
-#### 管理平台 (admin.loopv.net)
-- 统计看板（用户数/消息数/撤回数）
-- 用户管理：封禁/解封
-- 消息管理：删除消息
-- 管理员登录鉴权
-
-#### 数据模型重构
-- `users` 表：用户名、密码哈希、盐、昵称、头像、管理员标记、封禁标记
-- `sessions` 表：token、用户、过期时间
-- `messages` 表：关联 user_id、撤回标记、秒级时间戳
-
-#### 前端
-- 聊天室：登录/注册页 + 聊天页（明亮极简风）
-- 管理平台：登录页 + 管理看板
-- 响应式适配手机，无横向滚动条
-
-### 2026-09-01 (后续修复与增强)
-
-#### 修复
-- **WebSocket 认证状态丢失**：改用 `serializeAttachment` 存储连接认证状态（替代内存 Map），修复 DO 休眠唤醒后误报「请登录」、账号错乱的问题
-- **历史消息重复**：加载历史前先清空列表
-- **撤回按钮抖动**：撤回按钮改为常显示，不再 hover 显示（避免布局抖动）
-
-#### 新增
-- **在线用户列表**：所有用户可见当前在线成员，桌面端侧边栏 + 移动端抽屉
-- 管理员在在线列表中显示「管理员」徽章
-- 用户连接/断开实时广播在线状态
-
-### 2026-09-01 (管理平台增强)
-
-#### 消息管理
-- 消息状态三态区分：`deleted` 0=正常、1=用户撤回、2=管理员撤回、3=已删除
-- **删除**：管理员删除消息（deleted=3），chat 会话界面直接不显示该记录
-- **撤回**：管理员撤回消息（deleted=2），chat 界面显示「已被管理员撤回」
-- **批量删除**：勾选多条消息一次性删除
-- **筛选**：按时间范围、发送者、消息状态筛选
-- 管理员操作实时广播，chat 在线用户即时看到撤回/删除
-
-#### 用户管理
-- **测试用户角色**：`is_test` 字段，权限与普通用户一致
-- 后台创建测试用户（用户名 + 密码 + 昵称），明文密码存 `plain_password` 字段并在后台显示
-- 后台删除测试用户
-- **筛选**：按用户名、昵称、角色、状态筛选
-
-#### 数据模型
-- `users` 表新增 `is_test`、`plain_password` 字段
-- `messages.deleted` 字段语义扩展为三态
-
-### 2026-09-01 (门户主页重设计)
-
-#### 设计改造（反 AI 感）
-- **配色**：AI 紫渐变（`#6366f1 → #8b5cf6`）→ 低饱和深墨绿单强调色（`#2e5d4f`）+ 暖灰中性底
-- **字体**：Inter → Outfit（正文）+ JetBrains Mono（等宽）
-- **布局**：居中 hero + 模板三段式 → 非对称 grid 布局
-- **终端**：深色终端 → 浅色纸感终端，融入明亮主题
-- **动效**：移除无意义循环动画，仅保留一次性 stagger 入场 + 打字机叙事 + hover 反馈，尊重 `prefers-reduced-motion`
-
-#### 新增
-- **聊天室入口**：`ChatCta.astro` 墨绿大卡片「进来聊聊」，作为页面视觉焦点
-- **导航栏**：`Header.astro` 简洁导航
-
-#### 组件变化
-- 新增 `Header.astro`、`ChatCta.astro`
-- 重写 `Hero.astro`、`Terminal.astro`、`About.astro`、`Footer.astro`
-
-### 2026-09-01 (聊天室界面调整)
-
-#### 移除角色 tag
-- 在线用户列表移除「管理员」徽章，不显示任何角色 tag
-- 保留「（我）」标记
-
-#### 时区显示功能
-- 消息时间按用户设置的时区显示，默认东八区（Asia/Shanghai 北京时间）
-- 设置弹窗新增「时区」下拉选择（19 个常用时区，中文名 + 动态 UTC 偏移）
-- 时区设置持久化到 localStorage，保存后即时刷新已显示消息时间
-
-### 2026-09-01 (安全加固)
-
-#### 修复的漏洞
-- **任意文件上传 → 存储型 XSS**：`/api/upload` 增加危险 MIME 黑名单（`text/html`、`image/svg+xml`、`application/octet-stream` 等）+ 危险扩展名黑名单（`.html`、`.svg`、`.js`、`.xml` 等）双重拦截；头像上传拒绝 SVG；`/media/*` 响应加 `X-Content-Type-Options: nosniff`
-- **登录/注册暴力破解**：新增 `RateLimiter` Durable Object，按 IP 限流（10 分钟 5 次失败锁定 15 分钟），登录/注册成功自动清零；锁定期间窗口过期不会绕过（固定保留 lockedUntil）
-- **WebSocket 刷屏**：消息发送 800ms 节流、撤回 300ms 节流；消息内容限 5000 字符
-- **media_url 协议注入**：后端 WS 仅允许 `/media/` 前缀（拒绝 `javascript:` 等协议），INSERT 与广播均使用过滤后的值；前端 file 链接 href 加白名单双保险
-- **CORS 全开**：origin 白名单收窄为 `chat.loopv.net` / `admin.loopv.net` / `localhost` / `127.0.0.1`
-
-#### 额外加固
-- **管理平台**：admin API 仅允许通过 `admin.loopv.net` 域名访问（本地开发 localhost 放行），通过 chat 域名访问管理接口返回 403
-
-### 2026-09-01 (昵称/头像同步修复)
-
-#### 修复
-- **历史消息资料不同步**：修改昵称/头像后，同步 `UPDATE messages` 表中该用户的历史消息快照（nickname / avatar_url），历史消息即时显示最新资料
-- **在线连接资料缓存**：修改资料后通过内部 `/profile-update` 通知 DO，刷新该用户所有在线 WebSocket 连接的 `serializeAttachment`，新消息与在线列表即时显示最新昵称/头像，无需重新连接
-- **前端已渲染消息刷新**：消息行记录 `data-user-id`，新增 `refreshMessagesOfUser()` 局部更新该用户所有消息的昵称/头像；保存资料成功后立即刷新自己页面，DO 广播 `profile_updated` 事件让所有在线客户端同步更新
-- **存量数据回填**：修复上线前的历史消息快照仍为旧资料，手动执行 D1 SQL 将 `messages` 表快照对齐到 `users` 表当前值
 
 ## 2026-09-02
 
@@ -321,3 +174,149 @@
 - **消息状态多选筛选**：单选下拉改为 4 个可多选 chip（正常/用户撤回/管理员撤回/已删除，带与徽章配色的状态色点），勾选即"只显示这些状态"，全部不勾选 = 全部；筛选条件（时间/发送者/状态）变化时页码自动重置为 1
 #### 后端
 - `GET /api/admin/messages` 新增 `page` 参数（默认 1）与返回字段 `total`/`page`/`limit`/`totalPages`（COUNT 同筛选条件 + OFFSET 参数绑定）；状态筛选新增 `statuses` 逗号分隔多值（`deleted IN (...)`，仅保留合法 0~3 并去重），旧单值 `status` 参数保持兼容
+
+## 2026-09-01
+
+### 聊天室重新上线 + 重大重构
+
+#### 认证系统
+- 新增用户注册/登录（用户名 + 密码 + 昵称，无邮箱/手机验证）
+- 密码 PBKDF2-SHA256 + 随机盐哈希（Web Crypto API）
+- Session token 存 D1，7 天过期，登出即销毁
+- 第一个注册用户自动成为管理员
+
+#### 用户资料
+- 自主修改昵称、上传头像（R2 存储，仅图片）
+- 头像可选，无头像时显示昵称首字彩色圆底
+
+#### 消息撤回
+- 支持撤回自己的消息，不限时间
+- 管理员可撤回任意消息
+- WebSocket 实时广播撤回事件
+
+#### 时间显示
+- 所有消息统一北京时间（UTC+8）
+- 格式：`2026年08月07日 14:30`
+
+#### 管理平台 (admin.loopv.net)
+- 统计看板（用户数/消息数/撤回数）
+- 用户管理：封禁/解封
+- 消息管理：删除消息
+- 管理员登录鉴权
+
+#### 数据模型重构
+- `users` 表：用户名、密码哈希、盐、昵称、头像、管理员标记、封禁标记
+- `sessions` 表：token、用户、过期时间
+- `messages` 表：关联 user_id、撤回标记、秒级时间戳
+
+#### 前端
+- 聊天室：登录/注册页 + 聊天页（明亮极简风）
+- 管理平台：登录页 + 管理看板
+- 响应式适配手机，无横向滚动条
+
+### 后续修复与增强
+
+#### 修复
+- **WebSocket 认证状态丢失**：改用 `serializeAttachment` 存储连接认证状态（替代内存 Map），修复 DO 休眠唤醒后误报「请登录」、账号错乱的问题
+- **历史消息重复**：加载历史前先清空列表
+- **撤回按钮抖动**：撤回按钮改为常显示，不再 hover 显示（避免布局抖动）
+
+#### 新增
+- **在线用户列表**：所有用户可见当前在线成员，桌面端侧边栏 + 移动端抽屉
+- 管理员在在线列表中显示「管理员」徽章
+- 用户连接/断开实时广播在线状态
+
+### 管理平台增强
+
+#### 消息管理
+- 消息状态三态区分：`deleted` 0=正常、1=用户撤回、2=管理员撤回、3=已删除
+- **删除**：管理员删除消息（deleted=3），chat 会话界面直接不显示该记录
+- **撤回**：管理员撤回消息（deleted=2），chat 界面显示「已被管理员撤回」
+- **批量删除**：勾选多条消息一次性删除
+- **筛选**：按时间范围、发送者、消息状态筛选
+- 管理员操作实时广播，chat 在线用户即时看到撤回/删除
+
+#### 用户管理
+- **测试用户角色**：`is_test` 字段，权限与普通用户一致
+- 后台创建测试用户（用户名 + 密码 + 昵称），明文密码存 `plain_password` 字段并在后台显示
+- 后台删除测试用户
+- **筛选**：按用户名、昵称、角色、状态筛选
+
+#### 数据模型
+- `users` 表新增 `is_test`、`plain_password` 字段
+- `messages.deleted` 字段语义扩展为三态
+
+### 门户主页重设计
+
+#### 设计改造（反 AI 感）
+- **配色**：AI 紫渐变（`#6366f1 → #8b5cf6`）→ 低饱和深墨绿单强调色（`#2e5d4f`）+ 暖灰中性底
+- **字体**：Inter → Outfit（正文）+ JetBrains Mono（等宽）
+- **布局**：居中 hero + 模板三段式 → 非对称 grid 布局
+- **终端**：深色终端 → 浅色纸感终端，融入明亮主题
+- **动效**：移除无意义循环动画，仅保留一次性 stagger 入场 + 打字机叙事 + hover 反馈，尊重 `prefers-reduced-motion`
+
+#### 新增
+- **聊天室入口**：`ChatCta.astro` 墨绿大卡片「进来聊聊」，作为页面视觉焦点
+- **导航栏**：`Header.astro` 简洁导航
+
+#### 组件变化
+- 新增 `Header.astro`、`ChatCta.astro`
+- 重写 `Hero.astro`、`Terminal.astro`、`About.astro`、`Footer.astro`
+
+### 聊天室界面调整
+
+#### 移除角色 tag
+- 在线用户列表移除「管理员」徽章，不显示任何角色 tag
+- 保留「（我）」标记
+
+#### 时区显示功能
+- 消息时间按用户设置的时区显示，默认东八区（Asia/Shanghai 北京时间）
+- 设置弹窗新增「时区」下拉选择（19 个常用时区，中文名 + 动态 UTC 偏移）
+- 时区设置持久化到 localStorage，保存后即时刷新已显示消息时间
+
+### 安全加固
+
+#### 修复的漏洞
+- **任意文件上传 → 存储型 XSS**：`/api/upload` 增加危险 MIME 黑名单（`text/html`、`image/svg+xml`、`application/octet-stream` 等）+ 危险扩展名黑名单（`.html`、`.svg`、`.js`、`.xml` 等）双重拦截；头像上传拒绝 SVG；`/media/*` 响应加 `X-Content-Type-Options: nosniff`
+- **登录/注册暴力破解**：新增 `RateLimiter` Durable Object，按 IP 限流（10 分钟 5 次失败锁定 15 分钟），登录/注册成功自动清零；锁定期间窗口过期不会绕过（固定保留 lockedUntil）
+- **WebSocket 刷屏**：消息发送 800ms 节流、撤回 300ms 节流；消息内容限 5000 字符
+- **media_url 协议注入**：后端 WS 仅允许 `/media/` 前缀（拒绝 `javascript:` 等协议），INSERT 与广播均使用过滤后的值；前端 file 链接 href 加白名单双保险
+- **CORS 全开**：origin 白名单收窄为 `chat.loopv.net` / `admin.loopv.net` / `localhost` / `127.0.0.1`
+
+#### 额外加固
+- **管理平台**：admin API 仅允许通过 `admin.loopv.net` 域名访问（本地开发 localhost 放行），通过 chat 域名访问管理接口返回 403
+
+### 昵称/头像同步修复
+
+#### 修复
+- **历史消息资料不同步**：修改昵称/头像后，同步 `UPDATE messages` 表中该用户的历史消息快照（nickname / avatar_url），历史消息即时显示最新资料
+- **在线连接资料缓存**：修改资料后通过内部 `/profile-update` 通知 DO，刷新该用户所有在线 WebSocket 连接的 `serializeAttachment`，新消息与在线列表即时显示最新昵称/头像，无需重新连接
+- **前端已渲染消息刷新**：消息行记录 `data-user-id`，新增 `refreshMessagesOfUser()` 局部更新该用户所有消息的昵称/头像；保存资料成功后立即刷新自己页面，DO 广播 `profile_updated` 事件让所有在线客户端同步更新
+- **存量数据回填**：修复上线前的历史消息快照仍为旧资料，手动执行 D1 SQL 将 `messages` 表快照对齐到 `users` 表当前值
+
+## 2026-08-07
+
+### 项目初始化
+- 搭建 pnpm monorepo，包含 `apps/portal` (Astro) 和 `apps/chat` (Workers)
+- 选择 `cloudflare/workers-chat-demo` 架构 + 自行实现多媒体聊天室
+
+### 门户主页 (loopv.net)
+- Astro 5 + Tailwind CSS 4
+- 融合风格 → 后改为明亮极简风
+- 用户名: WaterMore
+
+### 聊天室 (chat.loopv.net)
+- Workers + Durable Objects + D1 + R2 + Hono
+- 支持文本/图片/视频/音频/表情包消息
+- WebSocket Hibernation API（空闲零计费）
+
+### 部署
+- D1: `loopv-chat-db`
+- R2: `loopv-chat-media`
+- Portal: Cloudflare Pages
+- Worker: `loopv-chat`
+- 域名: loopv.net → Pages, chat.loopv.net → Worker
+
+### 后续
+- **聊天室下线**：chat.loopv.net 停止服务，代码保留在 `apps/chat/`，Worker 已删除
+- 门户移除聊天室入口卡片，Terminal 命令更新
