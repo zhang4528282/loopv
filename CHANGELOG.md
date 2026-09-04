@@ -2,6 +2,10 @@
 
 ## 2026-09-04
 
+### 仓库公开前安全检查与 .dev.vars 忽略
+- **安全检查结论**：全库（HEAD + 历史 61 commits）扫描无凭据泄露——workflow 仅含 `${{ secrets.* }}` 占位符、源码无硬编码口令、无 `.env`/`.dev.vars`/私钥被跟踪；wrangler.toml 的 D1 `database_id` 非机密（历史已有先例处置）。可公开
+- **`.gitignore` 补充**：新增 `.dev.vars` / `.dev.vars.*` 忽略（wrangler 本地环境变量文件，防未来误提交进公开仓库）
+
 ### 新增 docs/TODO.md 待开发任务清单
 - **内部待办清单**：新建 `docs/TODO.md`，登记「loopv / loopv-docs Pages 自动构建路径过滤」改造项（低优先级，等用户主动实施），后续待办统一追加于此
 - **已收录进 docs 站**：`docs.ts` SOURCES 登记（slug `todo`，「项目文档」组），docs.loopv.net/todo 公开可见

@@ -3,6 +3,8 @@ dist
 .output
 .wrangler
 .env
+.dev.vars
+.dev.vars.*
 *.log
 .DS_Store
 .history
