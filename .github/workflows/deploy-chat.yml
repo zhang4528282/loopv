@@ -1,0 +1,52 @@
+name: Deploy loopv-chat worker
+
+# loopv-chat (chat.loopv.net / admin.loopv.net) Cloudflare Worker 自动部署
+# 触发：推送 master 且涉及 chat 相关文件 / lockfile / 本 workflow 时
+# 先决条件：仓库 Settings -> Secrets and variables -> Actions 需配置
+#   CLOUDFLARE_API_TOKEN   Cloudflare API Token（Edit Cloudflare Workers 模板）
+#   CLOUDFLARE_ACCOUNT_ID  Cloudflare 账号 ID
+# 说明：wrangler deploy 会自动应用 wrangler.toml 中 DO 的 migrations（new_sqlite_classes）
+# 提示：D1 表结构迁移（migrations/*.sql）不会自动执行，需手动在本地跑 wrangler d1 execute
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'apps/chat/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/deploy-chat.yml'
+
+jobs:
+  deploy:
+    name: Build & deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (compile check)
+        run: pnpm --filter @loopv/chat build
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: ./apps/chat

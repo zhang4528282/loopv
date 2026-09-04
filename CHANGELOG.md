@@ -2,6 +2,12 @@
 
 ## 2026-09-04
 
+### GitHub Actions 自动部署 loopv-chat（替代手动 wrangler deploy）
+#### 新增
+- **`deploy-chat.yml` workflow**：推送 master 且改动 `apps/chat/**` / `pnpm-lock.yaml` / 本 workflow 时自动执行 `pnpm install --frozen-lockfile` → `pnpm --filter @loopv/chat build`（编译验证）→ `cloudflare/wrangler-action@v4` 部署到 Cloudflare Workers（workingDirectory = `./apps/chat`，DO `new_sqlite_classes` migration 随 deploy 自动生效）
+- 至此 loopv-chat 与 loopv / loopv-docs 均通过 GitHub 推送 master 自动部署；chat 不再需要本地手动 `wrangler deploy`
+- 先决条件：仓库 Actions secrets 需配置 `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`（未配置时 workflow 部署步骤会失败，Worker 维持线上旧版本不受影响）；D1 表结构迁移（`migrations/*.sql`）依旧需要手动执行，不随自动部署运行
+
 ### 文档站 docs.loopv.net
 #### 新增
 - **docs.loopv.net 静态文档站**：新增 `apps/docs`（Astro 5 + Tailwind CSS 4，设计语言与门户一致：暖灰纸底 + 墨绿单强调色）。收录仓库全部 Markdown——根目录 `README.md`/`CONTEXT.md`/`CHANGELOG.md`/`AGENTS.md`（「项目文档」组）+ `docs/chat-manual.md`（「操作手册」组）
