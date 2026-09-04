@@ -122,6 +122,29 @@
         </div>
       </section>
 
+      <!-- ===================== 文档管理 ===================== -->
+      <section class="panel settings-panel" id="docs-panel">
+        <div class="panel-toolbar">
+          <h2 class="panel-title">文档管理</h2>
+        </div>
+        <div class="settings-body">
+          <p class="settings-desc">控制 docs.loopv.net 上各篇文档的显示 / 隐藏。保存后文档站会自动重建，约 1 分钟内生效。</p>
+
+          <div class="loading" id="docs-loading"><span class="spinner"></span>加载中…</div>
+          <div class="docs-fail hidden" id="docs-fail" role="alert">
+            <p class="docs-fail-text" id="docs-fail-text">文档数据加载失败</p>
+            <button class="btn-secondary btn-sm" id="btn-docs-retry" type="button">重试</button>
+          </div>
+          <div class="empty hidden" id="docs-empty">暂无可管理的文档</div>
+          <div class="docs-list hidden" id="docs-list"></div>
+
+          <div class="docs-actions hidden" id="docs-actions">
+            <span class="docs-dirty hidden" id="docs-dirty">有未保存的更改</span>
+            <button class="btn-primary" id="btn-save-docs" type="button" disabled>保存更改</button>
+          </div>
+        </div>
+      </section>
+
       <!-- 标签页 -->
       <div class="tabs" role="tablist">
         <button class="tab active" data-tab="users" type="button">用户管理</button>

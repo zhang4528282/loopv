@@ -10,6 +10,16 @@
 #### 部署
 - docs.loopv.net → Cloudflare Pages 新项目 `loopv-docs`（构建 `pnpm --filter @loopv/docs build`，输出 `apps/docs/dist`，推送 master 自动部署），需在控制台创建 Pages 项目并绑定域名
 
+### 文档显示开关（admin 后台控制 docs 文章是否显示）
+#### 新增
+- **后台控制文档显隐**：admin.loopv.net 新增「文档管理」区块——列出 docs.loopv.net 全部文档（标题/分组/slug + 复用现有渐变 switch），开关控制每篇显示/隐藏，底部「保存更改」批量提交
+- **后端接口**（worker.ts）：公开 `GET /api/docs/visibility`（无需登录，返回 `{ hidden: [...] }`，docs 构建期拉取）；管理 `PUT /api/admin/docs`（adminMiddleware，slug 白名单 `^[a-z0-9-]+$`、去重、上限 100，写入 settings 表 `docs_hidden`，触发 Pages Deploy Hook 重建）
+- **docs 构建联动**：构建时拉取可见性接口，被隐藏文档不生成页面（直链 404）、不进目录、分组计数与总篇数跟随可见集合；`/manifest.json` 静态端点输出全部文档（含隐藏项，hidden 标记）供 admin 跨域读取，`public/_headers` 放行 CORS；失败降级为全部显示，绝不影响构建
+- **README 相对链接联动**：指向被隐藏文档的站内链接自动还原为纯文本，不落 404
+- 注：重建需 Deploy Hook（env secret `DOCS_DEPLOY_HOOK`），未配置时保存仍生效但需手动推送触发重建
+#### 部署
+- chat Worker 新增两组接口 + admin 前端静态资源 → `cd apps/chat && npx wrangler deploy`
+
 ## 2026-08-07
 
 ### 项目初始化

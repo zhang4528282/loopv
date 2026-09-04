@@ -33,6 +33,15 @@ const SOURCES: SourceDef[] = [
   { repoPath: "docs/chat-manual.md", slug: "chat-manual", group: "操作手册" },
 ];
 
+/** 分组的固定顺序（按源清单首次出现次序）——分组是稳定身份，展示序号会随可见性重新编排 */
+const GROUP_ORDER: string[] = SOURCES.reduce<string[]>((acc, s) => {
+  if (!acc.includes(s.group)) acc.push(s.group);
+  return acc;
+}, []);
+
+/** 全部已知 slug，用于过滤后台下发的隐藏列表 */
+const KNOWN_SLUGS = new Set(SOURCES.map((s) => s.slug));
+
 /* ------------------------------------------------------------------
  * slugify：中英文都可用。把标题切成"中文段 / 非中文段"交替，再各自清洗：
  *   中文段整体保留；西文段去标点、空格转连字符。最终段间用 '-' 相连，
@@ -104,6 +113,8 @@ function wrapTables(html: string): string {
  * 重写站内相对 .md 链接 → 本文档站对应页面。
  * 目前只有 README 底部的 `docs/chat-manual.md` 一处，指向仓库文件而非
  * 线上 URL，直接照搬会在文档站里 404，所以做最小必要的映射。
+ * 若映射目标是后台隐藏的文档，这里仍先生成站内 href，由后续
+ * unlinkHiddenTargets 把整条链接还原成纯文本（见下）。
  */
 function rewriteInternalLinks(html: string): string {
   const byRepoPath = new Map(SOURCES.map((s) => [s.repoPath, s]));
@@ -113,6 +124,18 @@ function rewriteInternalLinks(html: string): string {
     const doc = byRepoPath.get(clean) ?? byFileName.get(clean);
     return doc ? `href="/${doc.slug}${hash}"` : whole;
   });
+}
+
+/**
+ * 把指向"已被后台隐藏"文档的站内 <a> 还原为纯文本。
+ * 隐藏的 slug 没有生成页面，保留链接会落 404，故只保留链接文字。
+ */
+function unlinkHiddenTargets(html: string, hidden: Set<string>): string {
+  if (hidden.size === 0) return html;
+  return html.replace(
+    /<a href="\/([a-z0-9._-]+)(?:#[^"]*)?"[^>]*>([\s\S]*?)<\/a>/gi,
+    (whole, slug: string, inner: string) => (hidden.has(slug) ? inner : whole),
+  );
 }
 
 /** 把一段 HTML 压成纯文本（解码少量实体、折叠空白） */
@@ -185,31 +208,119 @@ function compileSource(src: SourceDef): Doc {
   };
 }
 
-/* ---------- 对外查询（模块级缓存，只读一次） ---------- */
+/* ------------------------------------------------------------------
+ * 可见性数据源（后台控制"哪些文档显示"）
+ *
+ * 契约：GET https://chat.loopv.net/api/docs/visibility → 200
+ *   { "hidden": ["changelog"] }（无隐藏时为 { "hidden": [] }），无鉴权。
+ *
+ * 失败降级（fail-open）：请求失败 / 超时 / 非 200 / JSON 解析异常 / 格式
+ * 不符，一律当作 hidden=[]（全部显示），绝不因拉取失败而让构建崩溃。
+ * ------------------------------------------------------------------ */
+const VISIBILITY_ENDPOINT =
+  process.env.DOCS_VISIBILITY_URL ?? "https://chat.loopv.net/api/docs/visibility";
 
-let cache: Doc[] | null = null;
+/** 拉取超时：4 秒（AbortController + setTimeout，兼容性最稳） */
+const FETCH_TIMEOUT_MS = 4000;
 
-function allDocs(): Doc[] {
-  if (!cache) {
-    cache = SOURCES.map(compileSource);
-  }
-  return cache;
-}
-
-/** 分组后的全部文档（组内顺序 = 源清单顺序） */
-export function getDocGroups(): { name: string; items: Doc[] }[] {
-  const order: string[] = [];
-  const grouped = new Map<string, Doc[]>();
-  for (const doc of allDocs()) {
-    if (!grouped.has(doc.group)) {
-      grouped.set(doc.group, []);
-      order.push(doc.group);
+async function fetchHiddenSlugs(): Promise<string[]> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(VISIBILITY_ENDPOINT, {
+      signal: controller.signal,
+      headers: { accept: "application/json" },
+    });
+    if (!res.ok) {
+      console.warn(`[docs] 可见性接口返回 HTTP ${res.status}，按"全部显示"处理`);
+      return [];
     }
-    grouped.get(doc.group)!.push(doc);
+    const data: unknown = await res.json();
+    const rawHidden = (data as { hidden?: unknown }).hidden;
+    if (!Array.isArray(rawHidden)) {
+      console.warn('[docs] 可见性接口格式异常（缺 hidden 数组），按"全部显示"处理');
+      return [];
+    }
+    // trim + 去重 + 只保留本站确实收录的 slug
+    return [...new Set(rawHidden.map((x) => (typeof x === "string" ? x.trim() : "")).filter((s) => s !== "" && KNOWN_SLUGS.has(s)))];
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    console.warn(`[docs] 拉取文档可见性失败（${reason}），按"全部显示"处理`);
+    return [];
+  } finally {
+    clearTimeout(timer);
   }
-  return order.map((name) => ({ name, items: grouped.get(name)! }));
 }
 
-export function getDocBySlug(slug: string): Doc | undefined {
-  return allDocs().find((d) => d.slug === slug);
+/*
+ * 构建期每个模块实例会被多个入口（首页 / 各 slug 页 / manifest）分别加载，
+ * 缓存挂在 globalThis 上保证整个构建进程只真正拉取一次接口。
+ */
+const HIDDEN_CACHE_KEY = "__loopv_docs_hidden_v1";
+
+/** 后台隐藏的 slug 列表（已 trim / 去重 / 过滤未知 slug）。失败时返回 []。 */
+export function getHiddenSlugs(): Promise<string[]> {
+  const g = globalThis as unknown as Record<string, Promise<string[]> | undefined>;
+  g[HIDDEN_CACHE_KEY] ??= fetchHiddenSlugs();
+  return g[HIDDEN_CACHE_KEY];
+}
+
+/* ------------------------------------------------------------------
+ * 可见性过滤 + 对外查询
+ * ------------------------------------------------------------------ */
+
+export interface DocsSnapshot {
+  /** 仓库全部收录（含被隐藏的），顺序 = 源清单顺序 */
+  all: Doc[];
+  /** 可见子集：正文已处理"指向隐藏文档的链接还原为纯文本" */
+  visible: Doc[];
+  /** 被后台隐藏的 slug 集合 */
+  hidden: Set<string>;
+}
+
+async function buildSnapshot(): Promise<DocsSnapshot> {
+  const hidden = new Set(await getHiddenSlugs());
+  const all = SOURCES.map(compileSource);
+  // 隐藏文档的页面不会被渲染；对可见文档处理指向隐藏目标的站内链接
+  const visible =
+    hidden.size === 0
+      ? all
+      : all
+          .filter((d) => !hidden.has(d.slug))
+          .map((d) => ({ ...d, bodyHtml: unlinkHiddenTargets(d.bodyHtml, hidden) }));
+
+  return { all, visible, hidden };
+}
+
+const SNAPSHOT_CACHE_KEY = "__loopv_docs_snapshot_v1";
+
+/** 文档可见性快照（构建期一次性，缓存于 globalThis，全进程共享） */
+export function loadDocs(): Promise<DocsSnapshot> {
+  const g = globalThis as unknown as Record<string, Promise<DocsSnapshot> | undefined>;
+  g[SNAPSHOT_CACHE_KEY] ??= buildSnapshot();
+  return g[SNAPSHOT_CACHE_KEY];
+}
+
+export interface DocGroupView {
+  /** 展示序号（0 起）：只统计"有可见文档"的分组并顺延重新编号 */
+  index: number;
+  name: string;
+  /** 该分组可见文档（组内顺序 = 源清单顺序） */
+  items: Doc[];
+}
+
+/**
+ * 可见分组的目录视图：按 GROUP_ORDER 遍历，空分组（全部被隐藏）剔除。
+ * 首页列表与单篇页面包屑都从这里取序号，保证两处编号一致。
+ */
+export async function getVisibleGroupViews(): Promise<DocGroupView[]> {
+  const { visible } = await loadDocs();
+  const views: DocGroupView[] = [];
+  for (const name of GROUP_ORDER) {
+    const items = visible.filter((d) => d.group === name);
+    if (items.length > 0) {
+      views.push({ index: views.length, name, items });
+    }
+  }
+  return views;
 }

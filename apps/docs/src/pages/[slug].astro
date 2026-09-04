@@ -3,12 +3,12 @@ import Base from "../layouts/Base.astro";
 import DocHeader from "../components/DocHeader.astro";
 import DocFooter from "../components/DocFooter.astro";
 import DocToc from "../components/DocToc.astro";
-import { getDocBySlug, getDocGroups } from "../lib/docs";
+import { getVisibleGroupViews, loadDocs } from "../lib/docs";
 
-export function getStaticPaths() {
-  return getDocGroups().flatMap((group) =>
-    group.items.map((doc) => ({ params: { slug: doc.slug }, props: { doc } })),
-  );
+export async function getStaticPaths() {
+  // 只产出可见文档；被后台隐藏的 slug 不生成页面（直接访问即 404）
+  const { visible } = await loadDocs();
+  return visible.map((doc) => ({ params: { slug: doc.slug }, props: { doc } }));
 }
 
 interface Props {
@@ -16,9 +16,10 @@ interface Props {
 }
 
 const { doc } = Astro.props;
-const groups = getDocGroups();
-const groupIndex = groups.findIndex((g) => g.name === doc.group);
-const groupLabel = `${String(groupIndex + 1).padStart(2, "0")} — ${doc.group}`;
+const groupViews = await getVisibleGroupViews();
+const groupView = groupViews.find((v) => v.name === doc.group);
+// 组序号与首页目录一致（首页只数"有可见文档"的分组）
+const groupLabel = `${String((groupView?.index ?? 0) + 1).padStart(2, "0")} — ${doc.group}`;
 ---
 
 <Base title={`${doc.title} · LoopV 文档`}>

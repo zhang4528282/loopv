@@ -9,6 +9,9 @@ const TOKEN_KEY = "loopv_admin_token";
 const USER_KEY = "loopv_admin_user";
 const MSG_LIMIT = 100;
 
+// 文档站清单（跨域，已配 CORS）
+const DOCS_MANIFEST_URL = "https://docs.loopv.net/manifest.json";
+
 const AVATAR_COLORS = [
   "#6366f1", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981",
   "#06b6d4", "#f97316", "#84cc16", "#14b8a6", "#3b82f6", "#a855f7",
@@ -81,6 +84,14 @@ const userFilter = {
   status: "",
 };
 
+// 文档管理状态：hidden 集合为「当前全部隐藏 slug」的唯一真值
+// （初始 = GET /api/docs/visibility 返回值；manifest 只负责 slug/标题/分组全集）
+const docsState = {
+  items: [], // manifest 中的文档列表
+  hidden: new Set(), // 隐藏 slug 全集（含 manifest 外的存量隐藏项）
+  dirty: false, // 是否有未保存的更改
+};
+
 // ========== DOM 引用 ==========
 const $ = (sel) => document.querySelector(sel);
 
@@ -150,6 +161,17 @@ const dom = {
   inviteEnabled: $("#invite-enabled"),
   inviteCodeInput: $("#invite-code-input"),
   btnSaveInvite: $("#btn-save-invite"),
+
+  // 文档管理
+  docsLoading: $("#docs-loading"),
+  docsFail: $("#docs-fail"),
+  docsFailText: $("#docs-fail-text"),
+  btnDocsRetry: $("#btn-docs-retry"),
+  docsEmpty: $("#docs-empty"),
+  docsList: $("#docs-list"),
+  docsActions: $("#docs-actions"),
+  docsDirty: $("#docs-dirty"),
+  btnSaveDocs: $("#btn-save-docs"),
 
   // 确认弹窗
   confirmModal: $("#confirm-modal"),
@@ -413,6 +435,7 @@ function enterAdmin() {
   switchTab(state.activeTab);
   loadStats();
   loadInviteSettings();
+  loadDocsPanel();
 }
 
 // ========== 数据加载 ==========
@@ -452,6 +475,181 @@ async function saveInviteSettings() {
     handleError(err);
   } finally {
     dom.btnSaveInvite.disabled = false;
+  }
+}
+
+// ========== 文档管理 ==========
+// 拉取 docs.loopv.net 文档清单（跨域，manifest.json）
+async function fetchDocsManifest() {
+  const res = await fetch(DOCS_MANIFEST_URL, { cache: "no-store" });
+  if (!res.ok) throw new Error(`manifest 拉取失败 (${res.status})`);
+  const data = await res.json();
+  if (!data || !Array.isArray(data.docs)) throw new Error("manifest 格式不正确");
+  return data.docs;
+}
+
+// 并发拉取文档清单 + 隐藏列表；manifest 失败进区块内失败态（不弹致命错误）
+async function loadDocsPanel() {
+  dom.docsLoading.classList.remove("hidden");
+  dom.docsFail.classList.add("hidden");
+  dom.docsEmpty.classList.add("hidden");
+  dom.docsList.classList.add("hidden");
+  dom.docsActions.classList.add("hidden");
+
+  const [manifestRes, visRes] = await Promise.allSettled([
+    fetchDocsManifest(),
+    api("/api/docs/visibility"),
+  ]);
+
+  dom.docsLoading.classList.add("hidden");
+
+  // 任一失败 → 区块内失败提示 + 重试
+  if (manifestRes.status === "rejected" || visRes.status === "rejected") {
+    const manifestErr = manifestRes.status === "rejected";
+    const visErr = visRes.status === "rejected";
+    if (manifestErr && visErr) {
+      dom.docsFailText.textContent = "文档站与本地服务均连接失败，无法加载文档列表";
+    } else if (manifestErr) {
+      dom.docsFailText.textContent = "文档清单加载失败（无法访问 docs.loopv.net），请确认文档站已部署";
+    } else {
+      dom.docsFailText.textContent = "文档显示状态加载失败，请稍后重试";
+      // 会话过期/无权限走统一处理（跳登录/提示）
+      const err = visRes.reason;
+      if (err && (err.status === 401 || err.status === 403)) handleError(err);
+    }
+    dom.docsFail.classList.remove("hidden");
+    return;
+  }
+
+  const docs = manifestRes.value;
+  const hiddenList =
+    visRes.value && Array.isArray(visRes.value.hidden) ? visRes.value.hidden : [];
+  docsState.items = docs;
+  docsState.hidden = new Set(hiddenList);
+  docsState.dirty = false;
+
+  if (!docs.length) {
+    dom.docsEmpty.classList.remove("hidden");
+    return;
+  }
+
+  renderDocsList();
+  dom.docsList.classList.remove("hidden");
+  dom.docsActions.classList.remove("hidden");
+  updateDocsSaveBtn();
+}
+
+// 用 DOM API 构建文档列表行（slug/标题/分组均来自远端，避免 innerHTML 拼接）
+function renderDocsList() {
+  dom.docsList.innerHTML = "";
+  for (const doc of docsState.items) {
+    const slug = String(doc.slug || "");
+    if (!slug) continue;
+    const title = doc.title || slug;
+    const group = doc.group || "";
+
+    const row = document.createElement("div");
+    row.className = "doc-row";
+    row.dataset.slug = slug;
+
+    const main = document.createElement("div");
+    main.className = "doc-main";
+
+    const head = document.createElement("div");
+    head.className = "doc-head";
+    const titleEl = document.createElement("span");
+    titleEl.className = "doc-title";
+    titleEl.textContent = title;
+    titleEl.title = title;
+    head.appendChild(titleEl);
+    if (group) {
+      const groupBadge = document.createElement("span");
+      groupBadge.className = "doc-group-badge";
+      groupBadge.textContent = group;
+      head.appendChild(groupBadge);
+    }
+    main.appendChild(head);
+
+    const meta = document.createElement("div");
+    meta.className = "doc-meta";
+    meta.textContent = slug;
+    main.appendChild(meta);
+
+    const switchLabel = document.createElement("label");
+    switchLabel.className = "switch";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = !docsState.hidden.has(slug); // 初始以隐藏列表为准，manifest 仅供参考
+    cb.setAttribute("aria-label", `显示文档「${title}」`);
+    cb.addEventListener("change", () => {
+      toggleDocHidden(slug, cb.checked, row);
+    });
+    const slider = document.createElement("span");
+    slider.className = "slider";
+    slider.setAttribute("aria-hidden", "true");
+    switchLabel.appendChild(cb);
+    switchLabel.appendChild(slider);
+
+    row.appendChild(main);
+    row.appendChild(switchLabel);
+
+    updateDocRowHidden(row, slug);
+    dom.docsList.appendChild(row);
+  }
+}
+
+// 行内开关反馈：隐藏的文档标题降灰
+function updateDocRowHidden(row, slug) {
+  row.classList.toggle("doc-hidden", docsState.hidden.has(slug));
+}
+
+// 点击开关仅改本地状态（不逐次保存），按 slug 增删隐藏集合
+function toggleDocHidden(slug, visible, row) {
+  if (visible) docsState.hidden.delete(slug);
+  else docsState.hidden.add(slug);
+  docsState.dirty = true;
+  updateDocRowHidden(row, slug);
+  updateDocsSaveBtn();
+}
+
+// 保存按钮仅在有未保存更改时可用
+function updateDocsSaveBtn() {
+  dom.btnSaveDocs.disabled = !docsState.dirty;
+  dom.docsDirty.classList.toggle("hidden", !docsState.dirty);
+}
+
+// 保存后按后端回显的 hidden 数组同步所有行（规范化集合）
+function syncDocsRows() {
+  dom.docsList.querySelectorAll(".doc-row").forEach((row) => {
+    const slug = row.dataset.slug;
+    const cb = row.querySelector(".switch input");
+    if (!slug || !cb) return;
+    cb.checked = !docsState.hidden.has(slug);
+    updateDocRowHidden(row, slug);
+  });
+}
+
+async function saveDocsChanges() {
+  if (!docsState.dirty) return;
+  const hidden = [...docsState.hidden];
+  dom.btnSaveDocs.disabled = true;
+  try {
+    const data = await api("/api/admin/docs", {
+      method: "PUT",
+      body: { hidden },
+    });
+    docsState.hidden = new Set(Array.isArray(data.hidden) ? data.hidden : hidden);
+    docsState.dirty = false;
+    let msg = "已保存，文档站正在重建（约 1 分钟生效）";
+    if (data.hookFired === false) {
+      msg += "（重建未自动触发，需手动推送或等待）";
+    }
+    toast(msg, "success");
+    syncDocsRows();
+    updateDocsSaveBtn();
+  } catch (err) {
+    handleError(err);
+    updateDocsSaveBtn(); // 保存失败：仍是脏状态，恢复可重试
   }
 }
 
@@ -1194,6 +1392,10 @@ function bindEvents() {
   // 邀请码设置
   dom.btnSaveInvite.addEventListener("click", saveInviteSettings);
   dom.inviteCodeInput.addEventListener("keydown", (e) => e.key === "Enter" && saveInviteSettings());
+
+  // 文档管理
+  dom.btnDocsRetry.addEventListener("click", loadDocsPanel);
+  dom.btnSaveDocs.addEventListener("click", saveDocsChanges);
 
   // 创建用户弹窗
   dom.btnCreateUser.addEventListener("click", openCreateModal);

@@ -20,6 +20,8 @@ type Bindings = {
   MEDIA_BUCKET: R2Bucket;
   ASSETS: Fetcher;
   MAX_UPLOAD_SIZE: string;
+  // Cloudflare Pages Deploy Hook URL（可选）：docs.loopv.net 隐藏文档变更后触发重建
+  DOCS_DEPLOY_HOOK?: string;
 };
 
 type Variables = {
@@ -200,6 +202,19 @@ app.get("/api/invite-settings", async (c) => {
     .bind("invite_code_enabled")
     .first();
   return c.json({ enabled: (row?.value as string) === "1" });
+});
+
+// 公开接口：查询 docs.loopv.net 被隐藏的文档 slug 列表（docs 静态站构建/运行时调用，无需登录）
+app.get("/api/docs/visibility", async (c) => {
+  const row = await c.env.DB.prepare(
+    `SELECT value FROM settings WHERE key = ?1`
+  )
+    .bind("docs_hidden")
+    .first();
+  const raw = (row?.value as string) || "";
+  // value 为逗号分隔的 slug 字符串：split → 过滤空串 → 去重
+  const hidden = [...new Set(raw.split(",").map((s) => s.trim()).filter(Boolean))];
+  return c.json({ hidden });
 });
 
 // 注册
@@ -650,6 +665,55 @@ app.put("/api/admin/invite-settings", adminMiddleware, async (c) => {
     .bind("invite_code", code)
     .run();
   return c.json({ success: true, enabled: body.enabled, code });
+});
+
+// 更新 docs.loopv.net 隐藏文档列表（slug 白名单：小写字母/数字/连字符，最多 100 个）
+app.put("/api/admin/docs", adminMiddleware, async (c) => {
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "请求体不是合法 JSON" }, 400);
+  }
+
+  const hiddenInput = body?.hidden;
+  // 校验：必须是字符串数组
+  if (!Array.isArray(hiddenInput) || !hiddenInput.every((s) => typeof s === "string")) {
+    return c.json({ error: "非法的文档标识" }, 400);
+  }
+
+  // 去重 + 校验 slug 格式（仅小写字母/数字/连字符）
+  const hidden = [...new Set(hiddenInput)];
+  for (const slug of hidden) {
+    if (!/^[a-z0-9-]+$/.test(slug)) {
+      return c.json({ error: "非法的文档标识" }, 400);
+    }
+  }
+  if (hidden.length > 100) {
+    return c.json({ error: "数量过多" }, 400);
+  }
+
+  // 写入 settings：空数组也写入空字符串，避免残留旧值
+  await c.env.DB.prepare(
+    `INSERT INTO settings (key, value) VALUES (?1, ?2)
+     ON CONFLICT(key) DO UPDATE SET value = ?2`
+  )
+    .bind("docs_hidden", hidden.join(","))
+    .run();
+
+  // 触发 docs.loopv.net 重建（Pages Deploy Hook）：失败不报错，仅标记 hookFired: false
+  let hookFired = false;
+  const hookUrl = c.env.DOCS_DEPLOY_HOOK;
+  if (hookUrl) {
+    try {
+      await fetch(hookUrl, { method: "POST" });
+      hookFired = true;
+    } catch (e) {
+      console.error("docs deploy hook error:", e);
+    }
+  }
+
+  return c.json({ ok: true, hidden, hookFired });
 });
 
 // 用户列表（支持筛选：username/nickname/role/status）
