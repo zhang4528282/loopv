@@ -1,0 +1,58 @@
+---
+// 文档站入口 — 浅色纸卡，不做第二个强调色块（ChatCta 是页面唯一的墨绿色块）
+// 具体入口页列表为便捷跳转，主入口是右上角的 docs.loopv.net
+---
+
+<section class="px-5 py-10 sm:px-6 sm:py-16">
+  <div class="mx-auto max-w-5xl">
+    <div class="rounded-2xl border border-line bg-surface p-7 shadow-soft sm:p-10">
+      <div class="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+        <div class="max-w-prose">
+          <p class="font-mono text-[13px] text-accent">03 — 文档</p>
+          <h2 class="mt-3 text-2xl font-semibold tracking-tight text-ink sm:text-3xl">LoopV 文档</h2>
+          <p class="mt-3 text-base leading-relaxed text-ink-muted">
+            docs.loopv.net 汇集了项目里的说明文档——README、项目上下文、开发日志、
+            聊天室操作手册都有，想了解这个站是怎么搭的、聊天室怎么用，来这边翻。
+            页面由仓库里的 Markdown 直接生成，源文件更新后重新构建即是新内容。
+          </p>
+        </div>
+
+        <a
+          href="https://docs.loopv.net"
+          class="group inline-flex flex-shrink-0 items-center gap-2 self-start rounded-lg border border-line bg-paper px-4 py-2 font-mono text-sm text-ink-muted transition-colors hover:border-accent hover:text-accent"
+        >
+          docs.loopv.net
+          <span class="transition-transform duration-200 group-hover:translate-x-0.5" aria-hidden="true">↗</span>
+        </a>
+      </div>
+
+      <!-- 常用文档直达 -->
+      <ul class="mt-8 border-t border-line">
+        {[
+          { href: "https://docs.loopv.net/readme", name: "README.md", desc: "项目总览与快速开始" },
+          { href: "https://docs.loopv.net/context", name: "CONTEXT.md", desc: "架构与关键设计决策" },
+          { href: "https://docs.loopv.net/changelog", name: "CHANGELOG.md", desc: "开发日志与迭代记录" },
+          { href: "https://docs.loopv.net/chat-manual", name: "chat-manual.md", desc: "聊天室使用说明" },
+        ].map((item) => (
+          <li>
+            <a
+              href={item.href}
+              class="group flex items-baseline justify-between gap-4 py-3.5 transition-colors"
+            >
+              <span class="flex items-baseline gap-3">
+                <span class="w-28 flex-shrink-0 font-mono text-xs text-ink-faint">{item.name}</span>
+                <span class="text-sm text-ink-muted transition-colors group-hover:text-accent">
+                  {item.desc}
+                </span>
+              </span>
+              <span
+                class="font-mono text-xs text-ink-faint transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-accent"
+                aria-hidden="true"
+              >→</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </div>
+</section>

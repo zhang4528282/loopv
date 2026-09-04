@@ -1,0 +1,38 @@
+---
+import "../styles/global.css";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const { title = "LoopV 文档", description } = Astro.props;
+const siteDesc =
+  description ??
+  "LoopV 项目的说明文档站——README、项目上下文、开发日志与聊天室操作手册，都由仓库里的 Markdown 生成。";
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={siteDesc} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <!-- 墨绿底 + 文档纸页字形（与门户 W 方块同语言） -->
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='%232e5d4f'/><rect x='27' y='21' width='46' height='58' rx='6' fill='%23ffffff'/><rect x='35' y='34' width='30' height='5' rx='2.5' fill='%232e5d4f'/><rect x='35' y='46' width='30' height='5' rx='2.5' fill='%232e5d4f'/><rect x='35' y='58' width='20' height='5' rx='2.5' fill='%232e5d4f'/></svg>"
+    />
+    <title>{title}</title>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

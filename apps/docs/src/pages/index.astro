@@ -1,0 +1,86 @@
+---
+import Base from "../layouts/Base.astro";
+import DocHeader from "../components/DocHeader.astro";
+import DocFooter from "../components/DocFooter.astro";
+import { getDocGroups } from "../lib/docs";
+
+const groups = getDocGroups();
+const totalDocs = groups.reduce((n, g) => n + g.items.length, 0);
+---
+
+<Base>
+  <DocHeader />
+
+  <main>
+    <!-- 首页开头 -->
+    <section class="px-5 pt-16 pb-14 sm:px-6 sm:pt-24 sm:pb-20">
+      <div class="mx-auto max-w-5xl">
+        <p class="animate-fade-up font-mono text-[13px] text-accent" style="animation-delay: 0.05s">
+          ~/LoopV/docs
+        </p>
+        <h1
+          class="animate-fade-up mt-5 text-5xl font-semibold leading-[1.02] tracking-tighter text-ink sm:text-6xl"
+          style="animation-delay: 0.12s"
+        >
+          LoopV 文档
+        </h1>
+        <p
+          class="animate-fade-up mt-7 max-w-prose text-lg leading-relaxed text-ink-muted sm:text-xl"
+          style="animation-delay: 0.2s"
+        >
+          这个站把项目仓库里的 Markdown 整理成可读的页面——项目说明、架构上下文、开发日志，
+          还有聊天室的操作手册。内容直接取自仓库源码文件，改了 md 重新构建就是新文档。
+        </p>
+        <p
+          class="animate-fade-up mt-4 font-mono text-xs text-ink-faint"
+          style="animation-delay: 0.28s"
+        >
+          共 {totalDocs} 篇 · 源：仓库根目录 *.md 与 docs/
+        </p>
+      </div>
+    </section>
+
+    <!-- 分组目录 -->
+    <section class="px-5 pb-24 sm:px-6 sm:pb-28">
+      <div class="mx-auto max-w-5xl">
+        <div class="flex flex-col gap-16">
+          {groups.map((group, gi) => (
+            <div>
+              <div class="flex items-baseline gap-4">
+                <p class="font-mono text-[13px] text-accent">
+                  {String(gi + 1).padStart(2, "0")} — {group.name}
+                </p>
+                <p class="font-mono text-xs text-ink-faint">{group.items.length} 篇</p>
+              </div>
+
+              <div class="mt-5 divide-y divide-line rounded-2xl border border-line bg-surface shadow-soft">
+                {group.items.map((doc) => (
+                  <a
+                    href={`/${doc.slug}`}
+                    class="group flex flex-col gap-1.5 px-6 py-5 transition-colors hover:bg-paper sm:px-8 sm:py-6"
+                  >
+                    <span class="flex items-baseline justify-between gap-4">
+                      <span class="text-lg font-semibold tracking-tight text-ink sm:text-xl">
+                        {doc.title}
+                      </span>
+                      <span
+                        class="font-mono text-sm text-ink-faint transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-accent"
+                        aria-hidden="true"
+                      >→</span>
+                    </span>
+                    <span class="line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-muted">
+                      {doc.summary}
+                    </span>
+                    <span class="mt-0.5 font-mono text-[11px] text-ink-faint">{doc.repoPath}</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <DocFooter />
+</Base>

@@ -1,0 +1,336 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Outfit', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  /* 暖灰纸感底 + 深墨绿强调（单强调色，克制）—— 与 apps/portal 令牌一致 */
+  --color-paper: #f6f4f1;
+  --color-surface: #ffffff;
+  --color-surface-2: #efede8;
+  --color-ink: #1f1e1b;
+  --color-ink-muted: #6f6a62;
+  --color-ink-faint: #a39c90;
+  --color-line: #e7e3dc;
+  --color-line-strong: #d6d0c6;
+  --color-accent: #2e5d4f;
+  --color-accent-hover: #23493e;
+  --color-accent-soft: #e5ece9;
+
+  /* 带色调的阴影（不用纯黑） */
+  --shadow-soft: 0 1px 2px rgba(31, 30, 27, 0.04), 0 8px 24px -8px rgba(31, 30, 27, 0.08);
+  --shadow-card: 0 1px 3px rgba(31, 30, 27, 0.05), 0 20px 48px -20px rgba(31, 30, 27, 0.16);
+}
+
+html {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+::selection {
+  background: rgba(46, 93, 79, 0.16);
+  color: var(--color-ink);
+}
+
+/* 焦点状态 */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-paper);
+}
+::-webkit-scrollbar-thumb {
+  background: #d6d0c6;
+  border: 3px solid var(--color-paper);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #bdb5a9;
+}
+
+/* ===== 动效 ===== */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ===== 无障碍：尊重减少动效偏好 ===== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* =====================================================
+   Markdown 正文排版（.doc-body）
+   纸感 + 墨绿强调，无插件、手写样式
+   ===================================================== */
+
+.doc-body {
+  font-size: 1rem;
+  line-height: 1.9;
+  color: var(--color-ink);
+  overflow-wrap: break-word;
+}
+
+.doc-body > :first-child {
+  margin-top: 0 !important;
+}
+
+/* —— 段落 —— */
+.doc-body p {
+  margin: 1em 0;
+}
+
+/* —— 标题层级 —— */
+.doc-body h2,
+.doc-body h3,
+.doc-body h4 {
+  color: var(--color-ink);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  scroll-margin-top: 88px;
+}
+
+.doc-body h2 {
+  font-size: 1.45em;
+  line-height: 1.35;
+  margin: 2.2em 0 0.85em;
+  padding-bottom: 0.45em;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.doc-body h3 {
+  font-size: 1.16em;
+  line-height: 1.45;
+  margin: 1.9em 0 0.7em;
+}
+
+.doc-body h4 {
+  font-size: 1em;
+  line-height: 1.5;
+  margin: 1.6em 0 0.5em;
+}
+
+/* —— 引用块：纸感便签 —— */
+.doc-body blockquote {
+  margin: 1.5em 0;
+  padding: 0.7em 1.15em;
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-surface-2);
+  border-radius: 0 10px 10px 0;
+  color: var(--color-ink-muted);
+}
+
+.doc-body blockquote p {
+  margin: 0.25em 0;
+}
+
+/* —— 列表：低调的墨绿标记点 —— */
+.doc-body ul,
+.doc-body ol {
+  margin: 1em 0;
+  padding-left: 1.5em;
+}
+
+.doc-body li {
+  margin: 0.4em 0;
+  padding-left: 0.15em;
+}
+
+.doc-body li::marker {
+  color: var(--color-accent);
+}
+
+.doc-body ul ul,
+.doc-body ol ol,
+.doc-body ul ol,
+.doc-body ol ul {
+  margin: 0.4em 0;
+}
+
+/* —— 分隔线 —— */
+.doc-body hr {
+  border: none;
+  border-top: 1px solid var(--color-line);
+  margin: 2.4em 0;
+}
+
+/* —— 行内代码 / 代码块 —— */
+.doc-body :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  padding: 0.12em 0.42em;
+  color: var(--color-ink);
+}
+
+.doc-body pre {
+  margin: 1.5em 0;
+  background: #fbfaf7;
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  padding: 15px 17px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.79rem;
+  line-height: 1.8;
+  color: #4a463f;
+  box-shadow: var(--shadow-soft);
+}
+
+.doc-body pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* —— 表格：外侧带圆角容器，窄屏容器内横向滚动 —— */
+.doc-body .table-wrap {
+  margin: 1.6em 0;
+  overflow-x: auto;
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-soft);
+}
+
+.doc-body table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+
+.doc-body thead th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--color-ink);
+  background: var(--color-surface-2);
+  border-bottom: 1px solid var(--color-line-strong);
+  padding: 0.6rem 0.9rem;
+  white-space: nowrap;
+}
+
+.doc-body tbody td {
+  border-bottom: 1px solid var(--color-line);
+  padding: 0.6rem 0.9rem;
+  color: var(--color-ink-muted);
+  vertical-align: top;
+}
+
+.doc-body tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.doc-body tbody tr:hover td {
+  background: #fbfaf7;
+}
+
+/* —— 链接 —— */
+.doc-body a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-decoration-color: var(--color-line-strong);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: color 0.15s ease, text-decoration-color 0.15s ease;
+}
+
+.doc-body a:hover {
+  color: var(--color-accent-hover);
+  text-decoration-color: var(--color-accent);
+}
+
+.doc-body strong {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+/* —— 图片 —— */
+.doc-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid var(--color-line);
+  margin: 1.5em 0;
+}
+
+/* =====================================================
+   目录（TOC）—— JS 生成锚点列表，无 JS 时整块隐藏
+   ===================================================== */
+
+#toc-wrap {
+  display: none;
+}
+
+#toc-wrap.is-on {
+  display: block;
+}
+
+.toc-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--color-ink-faint);
+}
+
+.toc-a {
+  display: block;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-ink-muted);
+  padding: 4px 0 4px 12px;
+  border-left: 2px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.toc-a:hover {
+  color: var(--color-ink);
+}
+
+.toc-a.is-active {
+  color: var(--color-accent);
+  border-left-color: var(--color-accent);
+  font-weight: 500;
+}
+
+.toc-a.lv3 {
+  padding-left: 24px;
+}

@@ -1,5 +1,15 @@
 # 开发日志
 
+## 2026-09-04
+
+### 文档站 docs.loopv.net
+#### 新增
+- **docs.loopv.net 静态文档站**：新增 `apps/docs`（Astro 5 + Tailwind CSS 4，设计语言与门户一致：暖灰纸底 + 墨绿单强调色）。收录仓库全部 Markdown——根目录 `README.md`/`CONTEXT.md`/`CHANGELOG.md`/`AGENTS.md`（「项目文档」组）+ `docs/chat-manual.md`（「操作手册」组）
+- **构建时内容管线**：`src/lib/docs.ts` 用 fs 读取源 md（gray-matter 解析 + markdown-it 渲染 + markdown-it-anchor 中文锚点），URL：`/` 目录页 + `/readme` `/context` `/changelog` `/agents` `/chat-manual`；单篇页含源文件路径 mono 标注、右侧吸顶目录（客户端扫 h2/h3 生成 + IntersectionObserver 滚动高亮，无 JS 优雅降级不渲染）；README 相对链接映射到站内
+- **门户入口**：loopv.net 新增「03 — 文档」浅色纸卡区块（标题 + 说明 + docs.loopv.net 链接 + 常用文档直达行），顶栏导航与页脚新增「文档」链接
+#### 部署
+- docs.loopv.net → Cloudflare Pages 新项目 `loopv-docs`（构建 `pnpm --filter @loopv/docs build`，输出 `apps/docs/dist`，推送 master 自动部署），需在控制台创建 Pages 项目并绑定域名
+
 ## 2026-08-07
 
 ### 项目初始化

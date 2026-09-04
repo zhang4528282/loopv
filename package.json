@@ -6,10 +6,13 @@
   },
   "scripts": {
     "dev:portal": "pnpm --filter @loopv/portal dev",
+    "dev:docs": "pnpm --filter @loopv/docs dev",
     "dev:chat": "pnpm --filter @loopv/chat dev",
     "build:portal": "pnpm --filter @loopv/portal build",
+    "build:docs": "pnpm --filter @loopv/docs build",
     "build:chat": "pnpm --filter @loopv/chat build",
     "deploy:portal": "pnpm --filter @loopv/portal deploy",
+    "deploy:docs": "pnpm --filter @loopv/docs deploy",
     "deploy:chat": "pnpm --filter @loopv/chat deploy"
   }
 }

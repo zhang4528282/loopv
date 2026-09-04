@@ -1,6 +1,6 @@
 # LoopV 项目上下文
 
-> 最后更新: 2026-09-02
+> 最后更新: 2026-09-04
 
 ## 项目概述
 
@@ -13,6 +13,7 @@
 | **loopv.net** | 个人门户主页 | Astro 5 + Tailwind CSS 4, Cloudflare Pages |
 | **chat.loopv.net** | 匿名聊天室（注册登录） | Cloudflare Workers + Durable Objects + D1 + R2 + Hono |
 | **admin.loopv.net** | 聊天室管理平台 | 同 chat Worker，host 路由区分 |
+| **docs.loopv.net** | 项目文档站 | Astro 5 + Tailwind CSS 4 + markdown-it, Cloudflare Pages |
 | share.loopv.net | (规划中) 内容分享平台 | — |
 
 ## 架构
@@ -20,6 +21,7 @@
 ```
 apps/
 ├── portal/         Astro SSG → Cloudflare Pages 部署
+├── docs/           Astro SSG → Cloudflare Pages 部署（构建时读取仓库 md 渲染）
 └── chat/
     ├── src/
     │   ├── worker.ts       Hono HTTP 路由 + API（含 chat + admin 两套）
@@ -77,6 +79,7 @@ apps/
 6. **Monorepo**：pnpm workspaces 管理多子站点，共享依赖
 7. **按 IP 限流用 Durable Object**：登录/注册暴力破解防护用独立 `RateLimiter` DO（DO storage 持久化），不用 D1 建表——避免手动 SQL migration，DO 的 `new_sqlite_classes` migration 随 wrangler deploy 自动生效
 8. **上传安全策略**：R2 上传走 MIME + 扩展名双重黑名单，危险类型（html/svg/js/xml 等）直接拒绝；媒体响应加 `nosniff`；WebSocket 消息的 `media_url` 仅接受 `/media/` 前缀
+9. **文档站单一事实源**：docs.loopv.net 内容 = 仓库根目录 `*.md` + `docs/*.md`，构建时由 `apps/docs` 读取渲染成静态页；新增/修改 md 推送 master 即自动重建，不做运行时内容管理（admin 不参与）
 
 ## Cloudflare 资源
 
@@ -85,6 +88,7 @@ apps/
 | D1 Database | `loopv-chat-db` | 用户/会话/消息持久化 |
 | R2 Bucket | `loopv-chat-media` | 聊天室图片/视频/音频/头像存储 |
 | Pages 项目 | `loopv-portal` | 门户主页部署 |
+| Pages 项目 | `loopv-docs` | 文档站部署 |
 | Worker | `loopv-chat` | 聊天室 + 管理平台 API + WebSocket |
 
 ## 部署流程
@@ -94,7 +98,8 @@ apps/
 3. 将 D1 database_id 填入 `apps/chat/wrangler.toml`
 4. `cd apps/chat && npx wrangler deploy` 部署 Worker
 5. Pages 连接 GitHub → 部署 portal（root: `/`, build: `pnpm --filter @loopv/portal build`, output: `apps/portal/dist`）
-6. 绑定域名：loopv.net → Pages；chat.loopv.net / admin.loopv.net → Worker（DNS CNAME 到 workers.dev）
+6. Pages 连接 GitHub → 部署 docs（root: `/`, build: `pnpm --filter @loopv/docs build`, output: `apps/docs/dist`）
+7. 绑定域名：loopv.net → Pages(portal)；chat.loopv.net / admin.loopv.net → Worker；docs.loopv.net → Pages(docs)
 
 ## 命名约定
 

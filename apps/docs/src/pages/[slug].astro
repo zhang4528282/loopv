@@ -1,0 +1,75 @@
+---
+import Base from "../layouts/Base.astro";
+import DocHeader from "../components/DocHeader.astro";
+import DocFooter from "../components/DocFooter.astro";
+import DocToc from "../components/DocToc.astro";
+import { getDocBySlug, getDocGroups } from "../lib/docs";
+
+export function getStaticPaths() {
+  return getDocGroups().flatMap((group) =>
+    group.items.map((doc) => ({ params: { slug: doc.slug }, props: { doc } })),
+  );
+}
+
+interface Props {
+  doc: import("../lib/docs").Doc;
+}
+
+const { doc } = Astro.props;
+const groups = getDocGroups();
+const groupIndex = groups.findIndex((g) => g.name === doc.group);
+const groupLabel = `${String(groupIndex + 1).padStart(2, "0")} — ${doc.group}`;
+---
+
+<Base title={`${doc.title} · LoopV 文档`}>
+  <DocHeader />
+
+  <main>
+    <section class="px-5 pt-12 pb-20 sm:px-6 sm:pt-16 sm:pb-28">
+      <div class="mx-auto max-w-5xl">
+        <!-- 面包屑式返回 -->
+        <nav class="flex items-center gap-2 font-mono text-xs text-ink-faint" aria-label="面包屑">
+          <a href="/" class="transition-colors hover:text-accent">← 全部文档</a>
+          <span aria-hidden="true">/</span>
+          <span>{groupLabel}</span>
+        </nav>
+
+        <!-- 文档标题区 -->
+        <header class="mt-8">
+          <p class="font-mono text-[13px] text-accent">{groupLabel}</p>
+          <h1 class="mt-3 max-w-3xl text-3xl leading-tight font-semibold tracking-tight text-ink sm:text-4xl">
+            {doc.title}
+          </h1>
+          <p class="mt-4 flex flex-wrap items-center gap-2 font-mono text-xs text-ink-faint">
+            <span class="rounded border border-line bg-surface-2 px-1.5 py-0.5 text-[11px] text-ink-muted">
+              源文件
+            </span>
+            {doc.repoPath}
+          </p>
+        </header>
+
+        <!-- 正文 + 目录：移动端 TOC 在上方，桌面 TOC 吸顶在右侧 -->
+        <div class="mt-10 lg:grid lg:grid-cols-12 lg:gap-12">
+          <DocToc />
+
+          <article class="doc-body order-2 lg:col-span-8 lg:row-start-1" aria-label="文档正文">
+            <Fragment set:html={doc.bodyHtml} />
+          </article>
+        </div>
+
+        <!-- 页尾返回 -->
+        <div class="mt-16 border-t border-line pt-6">
+          <a
+            href="/"
+            class="group inline-flex items-center gap-2 font-mono text-sm text-ink-muted transition-colors hover:text-accent"
+          >
+            <span aria-hidden="true" class="transition-transform duration-200 group-hover:-translate-x-0.5">←</span>
+            返回全部文档
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <DocFooter />
+</Base>
