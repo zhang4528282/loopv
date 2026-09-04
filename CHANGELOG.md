@@ -2,6 +2,22 @@
 
 ## 2026-09-04
 
+### 隐私安全自审与隐私政策文档
+#### 新增
+- **《LoopV 隐私政策》**（`docs/privacy-policy.md`，进 docs 站「隐私政策」组）：面向用户的合规文档——收集项（账号/消息/媒体/技术信息，明确列出**不收集**项与无广告无追踪）、存储与保护（Cloudflare 境外基础设施、PBKDF2、HTTPS、上传黑名单）、共享披露（仅基础设施 + Google Fonts）、撤回/删除的**可见性语义如实表述**（撤回不可回收已送达内容）、保存期限表、用户权利、未成年人、联系方式。注册流程接入同意勾选列为待办（见自审报告 P1）
+- **《LoopV 隐私安全自审报告》**（`docs/security-review.md`，进 docs 站「项目文档」组）：代码级静态自审（chat/admin Worker + DO + 前端 + 静态站），逐条核实 11 项既有安全控制，输出 F1-F13 发现 + 2 项附带产品缺口 + PIPL 合规对照 + P0/P1/P2 整改清单
+#### 自审关键发现（已核实，本次仅评估不修复）
+- **F1 高危**：`GET /api/history` 无强制登录且对 `deleted=1/2`（撤回）消息仍返回 `content/media_url` 原文——撤回仅是「视觉撤回」，匿名可翻页拉取全量历史与媒体 URL
+- **F2 高危**：封禁/删除用户仅清 HTTP session，不中断已建立的 WebSocket（DO 无 kick 广播），被封禁者可继续发消息直至断连
+- **F3/F4**：无用户自助注销；消息删除为软删（deleted=3）+ R2 对象无删除接口、孤儿对象累积（媒体 `immutable` 缓存 1 年，物理删除需同步 purge）
+- **F5-F13**：admin 用户列表多余返回 `plain_password` 列、过期 session/限流键无清理、localStorage 凭证 + 无 CSP、缺基础安全头、用户名枚举（注册 409 + 封禁 403 与登录 401 文案差异）、媒体文件名可推测、自增 userId 暴露、Google Fonts 第三方请求
+- 附带：无改密接口、删除用户后 username 可被重新注册致历史归属混淆、密码下限 6、非法 JSON 返回 500
+#### 文档同步
+- **docs.ts SOURCES 登记**新文档两篇（privacy-policy 入「隐私政策」组、security-review 入「项目文档」组）
+- **AGENTS.md / CONTEXT.md 校正收录规则**：此前描述为「新增 md 自动收录」，实际 docs.ts `SOURCES` 为硬编码清单、新增必须手动登记——两文件同步修正；CONTEXT 数据模型补 `settings` 表
+- **README.md** 站点表补 docs.loopv.net、文档链接区补隐私政策与自审报告入口；**chat-manual.md** 注意事项补隐私政策指引
+
+
 ### 文档站 docs.loopv.net
 #### 新增
 - **docs.loopv.net 静态文档站**：新增 `apps/docs`（Astro 5 + Tailwind CSS 4，设计语言与门户一致：暖灰纸底 + 墨绿单强调色）。收录仓库全部 Markdown——根目录 `README.md`/`CONTEXT.md`/`CHANGELOG.md`/`AGENTS.md`（「项目文档」组）+ `docs/chat-manual.md`（「操作手册」组）

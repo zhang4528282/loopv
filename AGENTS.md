@@ -34,12 +34,12 @@ pnpm --filter @loopv/docs build
 |---|---|
 | **loopv.net** (门户) | Cloudflare Pages 连接 GitHub，推送 master 自动部署。构建命令 `pnpm --filter @loopv/portal build`，输出 `apps/portal/dist` |
 | **chat.loopv.net** (聊天室) | 在 `apps/chat/` 下手动执行 `npx wrangler deploy`。根目录 `pnpm deploy:chat` 无效——这是 pnpm 自身的 deploy 命令，不是 wrangler 的 |
-| **docs.loopv.net** (文档站) | Cloudflare Pages 连接 GitHub，推送 master 自动部署。构建命令 `pnpm --filter @loopv/docs build`，输出 `apps/docs/dist`。内容 = 仓库根目录 `*.md` + `docs/*.md` |
+| **docs.loopv.net** (文档站) | Cloudflare Pages 连接 GitHub，推送 master 自动部署。构建命令 `pnpm --filter @loopv/docs build`，输出 `apps/docs/dist`。内容 = `apps/docs/src/lib/docs.ts` 的 `SOURCES` 清单中登记的文件（仓库根目录 `*.md` + `docs/*.md`）；**新增文档必须在此文件登记**，否则不进文档站 |
 
 ## 架构要点
 
 - **Monorepo**：pnpm workspaces，`apps/portal`、`apps/docs`、`apps/chat` 独立无共享代码
-- **docs 文档站**：`apps/docs` 构建时用 Node fs 读取仓库根目录 `*.md` 与 `docs/*.md`（gray-matter + markdown-it 渲染成静态页），推送 master 自动重建；新增 md 文件进仓库即自动收录，无需改代码
+- **docs 文档站**：`apps/docs` 构建时按 `apps/docs/src/lib/docs.ts` 的 `SOURCES` 硬编码清单读取对应 md（gray-matter + markdown-it 渲染成静态页），推送 master 自动重建；**新增 md 必须同步登记到 `SOURCES`（含 repoPath/slug/group），不会自动收录**；修改已收录 md 推送即生效
 - **聊天室前端**：`apps/chat/public/` 下分 `chat/`（聊天室）和 `admin/`（管理平台）两个目录，纯 HTML/CSS/JS，由 Worker 的 `[assets]` 配置作为静态资源一并上传，不是独立部署
 - **聊天室后端**：Hono 路由 (`worker.ts`) + Durable Object (`chat-room.ts` WebSocket 广播/认证 + `rate-limiter.ts` 按 IP 登录限流)。DO 使用 Hibernation API（`acceptWebSocket`）空闲不计费
 - **chat + admin 共用一个 Worker**：通过 `host` header 区分（`admin.` 前缀），静态资源映射 `/chat/*` 和 `/admin/*`；admin API 仅允许 admin 域名访问（本地 localhost 放行）

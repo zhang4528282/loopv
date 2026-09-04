@@ -69,6 +69,10 @@ apps/
   - `2` = 管理员撤回（chat 显示「已被管理员撤回」）
   - `3` = 已删除（chat 完全不显示）
 
+### settings 表（key/value 键值对，002 迁移）
+- `invite_code_enabled` / `invite_code`：注册邀请码开关与邀请码（admin 后台维护）
+- `docs_hidden`：docs.loopv.net 隐藏文档 slug 列表（JSON 数组，admin 文档管理维护）
+
 ## 关键设计决策
 
 1. **聊天室不用第三方现成方案**：GitHub 上无完全匹配的开源项目（需要 Workers+DO+D1+R2+匿名+多媒体），选择基于 `cloudflare/workers-chat-demo` (1.1k⭐) 的架构自行实现
@@ -79,7 +83,7 @@ apps/
 6. **Monorepo**：pnpm workspaces 管理多子站点，共享依赖
 7. **按 IP 限流用 Durable Object**：登录/注册暴力破解防护用独立 `RateLimiter` DO（DO storage 持久化），不用 D1 建表——避免手动 SQL migration，DO 的 `new_sqlite_classes` migration 随 wrangler deploy 自动生效
 8. **上传安全策略**：R2 上传走 MIME + 扩展名双重黑名单，危险类型（html/svg/js/xml 等）直接拒绝；媒体响应加 `nosniff`；WebSocket 消息的 `media_url` 仅接受 `/media/` 前缀
-9. **文档站单一事实源**：docs.loopv.net 内容 = 仓库根目录 `*.md` + `docs/*.md`，构建时由 `apps/docs` 读取渲染成静态页；新增/修改 md 推送 master 即自动重建。内容本身不做运行时编辑，但**显示开关由 admin 控制**——settings 表 `docs_hidden` 存隐藏 slug 列表，admin 保存后触发 Pages Deploy Hook（env secret `DOCS_DEPLOY_HOOK`）重建；docs 构建拉取公开 `GET /api/docs/visibility` 过滤，失败降级为全部显示；`/manifest.json` 静态端点输出全部文档（含隐藏项）供 admin 跨域读取
+9. **文档站单一事实源**：docs.loopv.net 内容 = `apps/docs/src/lib/docs.ts` 的 `SOURCES` 清单登记的仓库 md（根目录 `*.md` + `docs/*.md`），构建时由 `apps/docs` 读取渲染成静态页，推送 master 自动重建；**新增 md 必须登记到 `SOURCES`（含 repoPath/slug/group），不会自动收录**。内容本身不做运行时编辑，但**显示开关由 admin 控制**——settings 表 `docs_hidden` 存隐藏 slug 列表，admin 保存后触发 Pages Deploy Hook（env secret `DOCS_DEPLOY_HOOK`）重建；docs 构建拉取公开 `GET /api/docs/visibility` 过滤，失败降级为全部显示；`/manifest.json` 静态端点输出全部文档（含隐藏项）供 admin 跨域读取
 
 ## Cloudflare 资源
 

@@ -30,7 +30,9 @@ const SOURCES: SourceDef[] = [
   { repoPath: "CONTEXT.md", slug: "context", group: "项目文档" },
   { repoPath: "CHANGELOG.md", slug: "changelog", group: "项目文档" },
   { repoPath: "AGENTS.md", slug: "agents", group: "项目文档" },
+  { repoPath: "docs/security-review.md", slug: "security-review", group: "项目文档" },
   { repoPath: "docs/chat-manual.md", slug: "chat-manual", group: "操作手册" },
+  { repoPath: "docs/privacy-policy.md", slug: "privacy-policy", group: "隐私政策" },
 ];
 
 /** 分组的固定顺序（按源清单首次出现次序）——分组是稳定身份，展示序号会随可见性重新编排 */

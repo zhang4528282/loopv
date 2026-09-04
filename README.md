@@ -9,6 +9,7 @@
 | **[loopv.net](https://loopv.net)** | 个人门户主页 | Astro 5 + Tailwind CSS 4, Cloudflare Pages |
 | **[chat.loopv.net](https://chat.loopv.net)** | 匿名聊天室（注册登录） | Cloudflare Workers + Durable Objects + D1 + R2 + Hono |
 | **[admin.loopv.net](https://admin.loopv.net)** | 聊天室管理平台 | 同 chat Worker，host 路由区分 |
+| **[docs.loopv.net](https://docs.loopv.net)** | 项目文档站（登记于 docs.ts SOURCES 的仓库 md） | Astro 5 + Tailwind CSS 4 + markdown-it, Cloudflare Pages |
 
 ## 项目结构
 
@@ -20,6 +21,12 @@ apps/
 │       ├── layouts/      # 页面布局
 │       ├── pages/        # 路由页面
 │       └── styles/       # 全局样式
+├── docs/            # docs.loopv.net 项目文档站
+│   └── src/
+│       ├── components/   # Astro 组件
+│       ├── layouts/      # 页面布局
+│       ├── pages/        # 路由页面（含 /manifest.json）
+│       └── lib/docs.ts   # 文档收录清单 SOURCES + 渲染管线
 └── chat/            # chat.loopv.net + admin.loopv.net
     ├── src/
     │   ├── worker.ts       # Worker 入口 + Hono 路由
@@ -60,7 +67,7 @@ apps/
 - **时间显示**：默认北京时间（UTC+8），可切换 19 个常用时区
 - **安全加固**：上传 MIME/扩展名双重黑名单、按 IP 登录限流、WS 消息节流、CORS 白名单、admin 域名隔离
 
-> 📖 详细使用说明见 [chat 操作手册](docs/chat-manual.md)
+> 📖 详细使用说明见 [chat 操作手册](docs/chat-manual.md) · 隐私与数据处理见 [隐私政策](docs/privacy-policy.md) · 隐私安全自审见 [安全自审报告](docs/security-review.md)
 
 ## 快速开始
 
