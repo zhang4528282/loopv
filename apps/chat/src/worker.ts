@@ -171,7 +171,7 @@ app.use("*", prettyJSON());
 
 // 安全响应头 + CSP（F8）：所有响应统一加基础安全头，HTML 响应附加 CSP
 const CSP_VALUE =
-  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://docs.loopv.net wss: ws:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' https://docs.loopv.net wss: ws:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
 // 给任意 Response headers 应用安全头（Hono 中间件与 serveAsset 兜底共用，
 // 因 ASSETS.fetch 返回的 Response 头可能不可变，静态 HTML 需在 serveAsset 重建响应）
@@ -213,6 +213,15 @@ function getClientIp(c: any): string {
     c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
     "unknown"
   );
+}
+
+// 安全解析 JSON 请求体：非法 JSON 返回 null（调用处统一回 400），避免解析失败触发 500
+async function safeJson(c: any): Promise<any | null> {
+  try {
+    return await c.req.json();
+  } catch {
+    return null;
+  }
 }
 
 async function rateLimit(
@@ -330,7 +339,9 @@ app.post("/api/auth/register", async (c) => {
     return c.json({ error: `尝试次数过多，请 ${limit.retryAfter} 秒后再试` }, 429);
   }
 
-  const body = await c.req.json();
+  const body = await safeJson(c);
+  if (!body) return c.json({ error: "请求体不是合法 JSON" }, 400);
+
   const username = (body.username || "").trim();
   const password = body.password || "";
   const nickname = (body.nickname || "").trim() || username;
@@ -418,7 +429,9 @@ app.post("/api/auth/register", async (c) => {
 
 // 登录
 app.post("/api/auth/login", async (c) => {
-  const body = await c.req.json();
+  const body = await safeJson(c);
+  if (!body) return c.json({ error: "请求体不是合法 JSON" }, 400);
+
   const username = (body.username || "").trim();
   const password = body.password || "";
 
@@ -497,7 +510,9 @@ app.post("/api/auth/delete-account", async (c) => {
     return c.json({ error: "管理员账号不支持自助注销" }, 403);
   }
 
-  const body = await c.req.json();
+  const body = await safeJson(c);
+  if (!body) return c.json({ error: "请求体不是合法 JSON" }, 400);
+
   const password = body.password || "";
 
   // 校验密码
@@ -546,7 +561,9 @@ app.post("/api/auth/change-password", async (c) => {
   const user = c.get("user");
   if (!user) return c.json({ error: "请先登录" }, 401);
 
-  const body = await c.req.json();
+  const body = await safeJson(c);
+  if (!body) return c.json({ error: "请求体不是合法 JSON" }, 400);
+
   const oldPassword = body.old_password || "";
   const newPassword = body.new_password || "";
   if (!oldPassword || !newPassword) {
@@ -605,7 +622,9 @@ app.put("/api/user/nickname", async (c) => {
   const user = c.get("user");
   if (!user) return c.json({ error: "请先登录" }, 401);
 
-  const body = await c.req.json();
+  const body = await safeJson(c);
+  if (!body) return c.json({ error: "请求体不是合法 JSON" }, 400);
+
   const nickname = (body.nickname || "").trim();
   if (!nickname) return c.json({ error: "昵称不能为空" }, 400);
   if (nickname.length > 20) return c.json({ error: "昵称长度不能超过 20 个字符" }, 400);
@@ -884,7 +903,9 @@ app.get("/api/admin/invite-settings", adminMiddleware, async (c) => {
 
 // 更新邀请码设置
 app.put("/api/admin/invite-settings", adminMiddleware, async (c) => {
-  const body = await c.req.json();
+  const body = await safeJson(c);
+  if (!body) return c.json({ error: "请求体不是合法 JSON" }, 400);
+
   const enabled = body.enabled ? "1" : "0";
   let code = (body.code || "").trim();
   if (code.length > 64) {
@@ -911,12 +932,8 @@ app.put("/api/admin/invite-settings", adminMiddleware, async (c) => {
 
 // 更新 docs.loopv.net 隐藏文档列表（slug 白名单：小写字母/数字/连字符，最多 100 个）
 app.put("/api/admin/docs", adminMiddleware, async (c) => {
-  let body: any;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: "请求体不是合法 JSON" }, 400);
-  }
+  const body = await safeJson(c);
+  if (!body) return c.json({ error: "请求体不是合法 JSON" }, 400);
 
   const hiddenInput = body?.hidden;
   // 校验：必须是字符串数组
@@ -1001,7 +1018,9 @@ app.get("/api/admin/users", adminMiddleware, async (c) => {
 
 // 创建测试用户（is_test=1，返回明文密码供后台显示）
 app.post("/api/admin/users", adminMiddleware, async (c) => {
-  const body = await c.req.json();
+  const body = await safeJson(c);
+  if (!body) return c.json({ error: "请求体不是合法 JSON" }, 400);
+
   const username = (body.username || "").trim();
   const password = body.password || "";
   const nickname = (body.nickname || "").trim() || username;
@@ -1188,7 +1207,9 @@ app.post("/api/admin/messages/:id/recall", adminMiddleware, async (c) => {
 
 // 批量删除消息
 app.post("/api/admin/messages/batch-delete", adminMiddleware, async (c) => {
-  const body = await c.req.json();
+  const body = await safeJson(c);
+  if (!body) return c.json({ error: "请求体不是合法 JSON" }, 400);
+
   const ids = body.ids || [];
   if (!Array.isArray(ids) || !ids.length) {
     return c.json({ error: "ids 不能为空" }, 400);
@@ -1233,7 +1254,9 @@ app.post("/api/admin/messages/batch-delete", adminMiddleware, async (c) => {
 // 封禁/解封用户
 app.post("/api/admin/users/:id/ban", adminMiddleware, async (c) => {
   const userId = parseInt(c.req.param("id"));
-  const body = await c.req.json();
+  const body = await safeJson(c);
+  if (!body) return c.json({ error: "请求体不是合法 JSON" }, 400);
+
   const banned = body.banned ? 1 : 0;
 
   // 不能封禁自己

@@ -11,19 +11,21 @@
 - **F5 最小化**：admin 用户列表 SQL 与前端表格移除 `plain_password` 列（测试用户明文仅创建时一次性回显）
 - **F6 过期 session**：登录/注册成功顺带清理过期 session 行
 - **P1 合规**：注册接口要求 `agreement: true`，chat 注册表单新增隐私政策链接 + 同意勾选
-- **F8 安全头**：全站基础安全头（nosniff/X-Frame-Options/Referrer-Policy）+ HTML CSP（chat/admin 静态页经 serveAsset 兜底包装确保生效）
+- **F8 安全头**：全站基础安全头（nosniff/X-Frame-Options/Referrer-Policy）+ HTML CSP（chat/admin 静态页经 serveAsset 兜底包装确保生效；CSP 同步移除 Google Fonts 白名单）
 - **F9 枚举收敛**：封禁账号登录不再返回 403「账号已被封禁」，与不存在/密码错误统一 401 文案
 - **F10 RateLimiter 残留键**：DO 增加每日 Alarm 清理过期限流键
 - **F11 文件名可推测**：头像/媒体文件改 32 位加密随机名，不再含 userId/时间戳
+- **F13 字体 self-host**：portal/docs 改用 @fontsource 本地打包；chat/admin 静态字体复制至 `public/{chat,admin}/fonts/` + @font-face，全部移除 fonts.googleapis/gstatic 外链
 - **G1/G3 账号能力**：新增改密接口（旧密码校验、8-64、改后全会话失效 + 踢下线）；密码下限 6→8（注册/改密/admin 创建测试用户 + 前端 placeholder）
 - **G2 username tombstone**：注销/删除用户记录 username 至 settings `deleted_usernames`，同名禁止重新注册（防历史归属混淆）
+- **G4 非法 JSON**：`safeJson` 工具包裹全部 JSON 请求体解析，非法输入统一返回 400 而非 500
 #### 新增（前端 UI）
 - chat 设置弹窗新增「账号安全」区块：修改密码、注销账号（管理员隐藏注销入口并提示不支持）
 - chat 注册表单新增《隐私政策》链接与同意勾选（仅注册模式显示）
 - 注销账号确认弹窗（危险说明 + 密码确认，回车可提交）
 #### 文档同步
-- `docs/security-review.md` 追加「整改记录」表（14 项已修复，F13 字体 self-host / G4 JSON 400 待办）
-- `docs/privacy-policy.md` 同步已上线能力（注册同意已接入、自助注销、修改密码、媒体级联删除、tombstone 说明）
+- `docs/security-review.md` 追加「整改记录」表（全部 F/G 项已修复）
+- `docs/privacy-policy.md` 同步已上线能力（注册同意已接入、自助注销、修改密码、媒体级联删除、tombstone 说明、字体自托管）
 - `docs/chat-manual.md` 更新（密码 8-64、隐私勾选、账号安全区块、封禁即断连、删除用户后用户名不可再注册、测试密码仅创建时展示）
 
 ### 隐私安全自审与隐私政策文档

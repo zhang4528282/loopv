@@ -132,7 +132,7 @@
 
 ## 七、整改记录（2026-09-04 实施）
 
-本报告评估当日，P0/P1/P2 中除「F13 Google Fonts self-host」与个别附带项外均已修复并部署：
+本报告评估当日，P0/P1/P2 与附带项（F1-F13、G1-G4）已全部修复并部署：
 
 | 编号 | 修复内容 | 状态 |
 |---|---|---|
@@ -150,7 +150,7 @@
 | G1 | 新增 `POST /api/auth/change-password`（改密后清空全部 session + kick 下线） | ✅ 已修复 |
 | G2 | 注销/删除用户记录 username tombstone（settings `deleted_usernames`），注册时拒绝同名 | ✅ 已修复 |
 | G3 | 密码下限 6 → 8（注册/改密/创建测试用户，含前端 placeholder 与手册） | ✅ 已修复 |
-| F13 | Google Fonts self-host（跨 portal/docs/chat/admin 4 站，需替换字体资源） | ⏳ 待办（低优先，另立任务） |
-| G4 | `c.req.json()` 非法输入 400 处理 | ⏳ 待办（可用性噪音，低优先） |
+| F13 | Google Fonts self-host（portal/docs 用 @fontsource 本地打包；chat/admin 静态字体复制至 `public/{chat,admin}/fonts/` 并加 @font-face，移除全部外链与 CSP 白名单） | ✅ 已修复 |
+| G4 | `c.req.json()` 非法输入统一 400（新增 `safeJson` 工具包裹全部 JSON 请求体解析） | ✅ 已修复 |
 
 **残余风险提示**：媒体删除仍受浏览器 `Cache-Control: immutable, max-age=31536000` 本地缓存影响（服务端对象已删、新请求 404；已缓存副本最长 1 年自然过期）。如需即时失效需配合缓存版本化或缩短缓存时长，列入后续产品决策。

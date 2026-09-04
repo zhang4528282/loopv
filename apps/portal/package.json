@@ -10,6 +10,8 @@
     "deploy": "wrangler pages deploy dist --project-name=loopv-portal"
   },
   "dependencies": {
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@fontsource/outfit": "^5.3.0",
     "astro": "^5.0.0"
   },
   "devDependencies": {
