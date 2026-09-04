@@ -2,6 +2,9 @@
 
 ## 2026-09-04
 
+### GitHub Actions Node 20 弃用警告消除
+- **`.github/workflows/deploy-chat.yml` action 版本升级**：`actions/checkout@v4` → `@v7`、`actions/setup-node@v4` → `@v7`、`pnpm/action-setup@v4` → `@v6`（最新 stable 均改用 Node.js 24 运行时），消除 GitHub「Node.js 20 is deprecated … forced to run on Node.js 24」弃用警告，部署行为无变化
+
 ### 断线恢复与手机提示音修复
 #### 修复（app.js）
 - **手动刷新按钮断线时不再只是刷 HTTP 消息**：此前 WS 断开后点刷新仅 `loadHistory()`（HTTP），从不重连，导致必须刷新整个浏览器页面才能恢复连接；现改为——WS 未连接且非主动退出时点击立即触发 `connectWs()` 重连，已连接时才发 `refresh_online` + 刷消息，并按 `loadHistory` 结果给出「消息已刷新 / 刷新失败，请检查网络」反馈
