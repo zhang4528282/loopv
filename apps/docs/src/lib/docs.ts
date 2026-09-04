@@ -31,6 +31,7 @@ const SOURCES: SourceDef[] = [
   { repoPath: "CHANGELOG.md", slug: "changelog", group: "项目文档" },
   { repoPath: "AGENTS.md", slug: "agents", group: "项目文档" },
   { repoPath: "docs/security-review.md", slug: "security-review", group: "项目文档" },
+  { repoPath: "docs/TODO.md", slug: "todo", group: "项目文档" },
   { repoPath: "docs/chat-manual.md", slug: "chat-manual", group: "操作手册" },
   { repoPath: "docs/privacy-policy.md", slug: "privacy-policy", group: "隐私政策" },
 ];

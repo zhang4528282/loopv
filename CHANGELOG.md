@@ -3,7 +3,8 @@
 ## 2026-09-04
 
 ### 新增 docs/TODO.md 待开发任务清单
-- **内部待办清单**：新建 `docs/TODO.md`（不收录进 docs 站），登记「loopv / loopv-docs Pages 自动构建路径过滤」改造项（低优先级，等用户主动实施），后续待办统一追加于此
+- **内部待办清单**：新建 `docs/TODO.md`，登记「loopv / loopv-docs Pages 自动构建路径过滤」改造项（低优先级，等用户主动实施），后续待办统一追加于此
+- **已收录进 docs 站**：`docs.ts` SOURCES 登记（slug `todo`，「项目文档」组），docs.loopv.net/todo 公开可见
 
 ### GitHub Actions 自动部署 loopv-chat（替代手动 wrangler deploy）
 #### 新增
