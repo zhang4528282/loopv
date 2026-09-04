@@ -523,8 +523,10 @@ async function loadHistory() {
     // 拉满 50 条说明可能还有更早的；不足则到底
     state.hasOlder = (data.messages || []).length >= MAX_HISTORY;
     scrollToBottom(true);
+    return true;
   } catch (err) {
     toast(err.message, "error");
+    return false;
   }
 }
 
@@ -571,6 +573,8 @@ async function loadOlder() {
 }
 
 // ========== WebSocket ==========
+const WS_CONNECT_TIMEOUT = 10000; // 连接打开超时：超过则主动断开走自动重连，防止卡死在 CONNECTING
+
 function connectWs() {
   if (!state.token) return;
 
@@ -580,10 +584,32 @@ function connectWs() {
   const wsUrl = `${protocol}//${location.host}/ws`;
 
   setConn("connecting");
+  // 清理仍卡在 CONNECTING 的旧连接（如受限网络半开），避免悬挂占用
+  const prev = state.ws;
+  if (prev && prev.readyState === WebSocket.CONNECTING) {
+    try {
+      prev.close();
+    } catch {
+      /* 忽略 */
+    }
+  }
   const ws = new WebSocket(wsUrl);
   state.ws = ws;
 
+  // 打开超时兜底：10s 仍在 CONNECTING（网络黑洞/代理挂起）则主动关闭，
+  // 触发 onclose → scheduleReconnect 进入退避重试，避免连接状态永久卡死
+  const openTimer = setTimeout(() => {
+    if (state.ws === ws && ws.readyState === WebSocket.CONNECTING) {
+      try {
+        ws.close();
+      } catch {
+        /* 忽略 */
+      }
+    }
+  }, WS_CONNECT_TIMEOUT);
+
   ws.onopen = () => {
+    clearTimeout(openTimer);
     // 连接后立即发送认证
     ws.send(JSON.stringify({ type: "auth", token: state.token }));
     sendHeartbeat();
@@ -600,6 +626,7 @@ function connectWs() {
   };
 
   ws.onclose = () => {
+    clearTimeout(openTimer);
     if (state.ws !== ws) return;
     if (state.intentionalClose || !state.token) {
       setConn("offline");
@@ -795,19 +822,40 @@ function showPresenceNotice(kind, user) {
   if (getSoundEnabled()) playPresenceSound(kind);
 }
 
-let _presenceAudioCtx = null;
+let _audioCtx = null;
 
-// 用 Web Audio API 生成简短提示音（无需音频文件）：上线升调、下线降调
-function playPresenceSound(kind) {
+// 创建/复用一个 AudioContext 并尝试解除挂起。
+// 必须在用户手势（click/touchstart/keydown 等）上下文中调用才能真正解锁
+// —— iOS/部分安卓 WebView 要求音频在手势内启动，否则 context 保持 suspended、
+// currentTime 冻结，播放静默无声。页面所有手势均绑定了本函数（见 init）。
+function unlockAudio() {
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return;
-    // 复用同一个 AudioContext（用户已与页面交互过，可正常发声）
-    if (!_presenceAudioCtx) _presenceAudioCtx = new Ctx();
-    const ctx = _presenceAudioCtx;
-    if (ctx.state === "suspended") ctx.resume();
+    if (!Ctx) return null;
+    if (!_audioCtx) _audioCtx = new Ctx();
+    if (_audioCtx.state === "suspended") {
+      _audioCtx.resume().catch(() => { /* 未解锁时忽略 */ });
+    }
+    return _audioCtx;
+  } catch {
+    return _audioCtx;
+  }
+}
 
-    const notes = kind === "online" ? [660, 880] : [880, 660];
+// 播放一组双音提示音（共享同一 AudioContext，respect 非手势下偶尔仍挂起的场景）
+async function playTones(notes) {
+  try {
+    const ctx = unlockAudio();
+    if (!ctx) return;
+    if (ctx.state === "suspended") {
+      // 罕见仍被挂起：等待恢复后再播，避免在冻结时间轴上无声播放
+      try {
+        await ctx.resume();
+      } catch {
+        return;
+      }
+    }
+    if (ctx.state !== "running") return;
     const now = ctx.currentTime;
     for (let i = 0; i < notes.length; i++) {
       const osc = ctx.createOscillator();
@@ -828,35 +876,14 @@ function playPresenceSound(kind) {
   }
 }
 
-// 用 Web Audio API 生成新消息提示音（清脆双音 880→1320Hz，复用同一个 AudioContext）
-function playMessageSound() {
-  try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return;
-    // 与上下线音效共用 AudioContext（页面有过用户交互后即可正常播放）
-    if (!_presenceAudioCtx) _presenceAudioCtx = new Ctx();
-    const ctx = _presenceAudioCtx;
-    if (ctx.state === "suspended") ctx.resume();
+// 用 Web Audio API 生成简短提示音（无需音频文件）：上线升调、下线降调
+function playPresenceSound(kind) {
+  playTones(kind === "online" ? [660, 880] : [880, 660]);
+}
 
-    const notes = [880, 1320];
-    const now = ctx.currentTime;
-    for (let i = 0; i < notes.length; i++) {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = notes[i];
-      const start = now + i * 0.1;
-      gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(0.1, start + 0.015);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.12);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(start);
-      osc.stop(start + 0.13);
-    }
-  } catch {
-    /* 音效播放失败静默忽略 */
-  }
+// 用 Web Audio API 生成新消息提示音（清脆双音 880→1320Hz，与上下线共用 AudioContext）
+function playMessageSound() {
+  playTones([880, 1320]);
 }
 
 // ========== 在线成员 ==========
@@ -1489,17 +1516,27 @@ function bindEvents() {
     });
   });
 
-  // 手动刷新消息（兜底，带防抖 + 图标旋转反馈）
+  // 手动刷新：连接断开时先重连，连接正常时刷消息 + 请求重播在线成员（防抖 + 图标旋转反馈）
   dom.btnRefresh.addEventListener("click", async () => {
     // 防止快速重复点击
     dom.btnRefresh.disabled = true;
     dom.btnRefresh.classList.add("spinning");
-    // 同时请求服务端重新广播在线成员列表（网络/WS 异常后状态可能不同步）
-    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
-      state.ws.send(JSON.stringify({ type: "refresh_online" }));
+    const ws = state.ws;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      // WS 未连接：手动触发重连（此前仅刷新 HTTP 消息，断线后点击无法恢复连接，只能刷新浏览器）
+      if (state.token && !state.intentionalClose) {
+        connectWs();
+      }
+    } else {
+      // 已连接：请求服务端重新广播在线成员列表（网络/WS 异常后状态可能不同步）
+      try {
+        ws.send(JSON.stringify({ type: "refresh_online" }));
+      } catch {
+        /* 忽略发送失败 */
+      }
     }
-    await loadHistory();
-    toast("消息已刷新", "success");
+    const ok = await loadHistory();
+    toast(ok ? "消息已刷新" : "刷新失败，请检查网络", ok ? "success" : "error");
     // 旋转至少保持 600ms，让反馈清晰可见
     setTimeout(() => {
       dom.btnRefresh.disabled = false;
@@ -1681,6 +1718,13 @@ function init() {
     if (e.persisted) handleVisibilityResume();
   });
   window.addEventListener("online", handleVisibilityResume);
+
+  // 任意用户手势（点按/触摸/按键）都尝试创建并解锁 AudioContext：
+  // iOS/部分安卓要求音频在手势上下文中启动，否则收到消息时的提示音播放静默无声。
+  // 绑定到所有常见手势类型，滚动触摸也无需阻塞（passive）。
+  ["click", "touchstart", "keydown", "pointerdown"].forEach((type) => {
+    document.addEventListener(type, unlockAudio, { passive: true });
+  });
 }
 
 // 视口变化（键盘弹出/收起、缩放等）时同步容器高度
